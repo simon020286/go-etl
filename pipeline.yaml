@@ -1,0 +1,27 @@
+steps:
+  - name: read_file
+    type: file
+    config:
+      path: input.txt
+
+  - name: transform0
+    type: delay
+    config:
+      ms: 500
+    inputs:
+      - read_file
+  
+  - name: print2
+    type: stdout
+    inputs: 
+      - transform0
+
+  - name: transform1
+    type: uppercase
+    inputs: 
+      - read_file
+
+  - name: print
+    type: stdout
+    inputs: 
+      - transform1
