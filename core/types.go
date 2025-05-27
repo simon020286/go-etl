@@ -3,6 +3,8 @@ package core
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
@@ -21,7 +23,8 @@ type StepFactory func(name string, config map[string]any) (Step, error)
 
 // InterpolateValue is a generic type for values that support interpolation
 type InterpolateValue[T any] struct {
-	Raw any
+	Raw        any
+	TargetType string // Optional, can be used to specify the type of the value
 }
 
 func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
@@ -40,7 +43,8 @@ func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 	}
 	state.mu.RUnlock()
 	var t T
-	tmpl, err := template.New("interpolate").Parse(iv.Raw.(string))
+	tmpl, err := template.New("interpolate").
+		Parse(iv.Raw.(string))
 	if err != nil {
 		return t, err
 	}
@@ -53,17 +57,38 @@ func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 	out := output.String()
 	switch any(t).(type) {
 	case int:
-		var parsed int
-		_, err := fmt.Sscanf(out, "%d", &parsed)
-		return any(parsed).(T), err
+		// var parsed int
+		// _, err := fmt.Sscanf(out, "%d", &parsed)
+		// return any(parsed).(T), err
+		v, err := strconv.Atoi(out)
+		return any(v).(T), err
 	case string:
 		return any(out).(T), nil
 	case bool:
-		var parsed bool
-		_, err := fmt.Sscanf(out, "%t", &parsed)
-		return any(parsed).(T), err
+		// var parsed bool
+		// _, err := fmt.Sscanf(out, "%t", &parsed)
+		// return any(parsed).(T), err
+		v, err := strconv.ParseBool(out)
+		return any(v).(T), err
 	default:
-		return t, fmt.Errorf("unsupported type")
+		switch iv.TargetType {
+		case "int":
+			// var parsed int
+			// _, err := fmt.Sscanf(out, "%d", &parsed)
+			// return any(parsed).(T), err
+			v, err := strconv.Atoi(out)
+			return any(v).(T), err
+		case "bool":
+			// var parsed bool
+			// _, err := fmt.Sscanf(out, "%t", &parsed)
+			// return any(parsed).(T), err
+			v, err := strconv.ParseBool(out)
+			return any(v).(T), err
+		case "string":
+			return any(out).(T), nil
+		default:
+			return t, fmt.Errorf("unsupported target type: %s", iv.TargetType)
+		}
 	}
 }
 
@@ -71,6 +96,7 @@ func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 type PipelineState struct {
 	Results map[string]*Data
 	mu      sync.RWMutex
+	Logger  *slog.Logger
 }
 
 func (ps *PipelineState) Get(name string) (*Data, bool) {

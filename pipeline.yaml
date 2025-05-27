@@ -11,6 +11,19 @@ steps:
     config:
       value: '{{ .read_file }}'
 
+  - name: transform2
+    type: map
+    inputs: 
+      - transform1
+    config:
+      fields:
+        - name: first_char
+          value: '{{ .transform1 }}'
+          type: string
+        - name: length
+          value: '{{ len .transform1 }}'
+          type: int
+
   - name: print
     type: stdout
     inputs: 

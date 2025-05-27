@@ -4,12 +4,17 @@ import (
 	"context"
 	"go-etl/pipeline"
 	_ "go-etl/steps"
+	"log/slog"
 	"os"
 
 	"gopkg.in/yaml.v3"
 )
 
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug, // o slog.LevelInfo
+	}))
+
 	f, err := os.Open("pipeline.yaml")
 	if err != nil {
 		panic(err)
@@ -27,7 +32,7 @@ func main() {
 		panic(err)
 	}
 
-	if err := pl.Run(context.Background()); err != nil {
+	if err := pl.Run(context.Background(), logger); err != nil {
 		panic(err)
 	}
 }

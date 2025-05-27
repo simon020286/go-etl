@@ -7,5 +7,6 @@ func init() {
 	pipeline.RegisterStepType("stdout", newStdoutStep)
 	pipeline.RegisterStepType("delay", newDelayStep)
 	pipeline.RegisterStepType("uppercase", newUppercaseStep)
+	pipeline.RegisterStepType("map", newMapStep)
 	pipeline.RegisterStepType("plugin", newExecPluginStep)
 }

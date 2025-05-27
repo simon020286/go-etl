@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"go-etl/core"
+	"log/slog"
 	"os"
 	"sync"
 )
@@ -38,10 +39,9 @@ func LoadPipeline(config PipelineConfig) (*Pipeline, error) {
 	return &Pipeline{steps: stepsMap, graph: graph, inputs: inputs}, nil
 }
 
-func (p *Pipeline) Run(ctx context.Context) error {
+func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 	state := &core.PipelineState{Results: make(map[string]*core.Data)}
-	// results := make(map[string]*core.Data)
-	// var mu sync.Mutex
+
 	var wg sync.WaitGroup
 	done := make(map[string]chan struct{})
 	for name := range p.steps {
@@ -54,26 +54,19 @@ func (p *Pipeline) Run(ctx context.Context) error {
 			<-done[dep]
 		}
 
-		// inputData := make(map[string]*core.Data)
-		// mu.Lock()
-		// for _, dep := range p.inputs[name] {
-		// 	inputData[dep] = results[dep]
-		// }
-		// mu.Unlock()
-
+		logger.Debug("Running step", slog.String("step", name))
 		out, err := p.steps[name].Run(ctx, state)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Step %s failed: %v\n", name, err)
 		}
 
-		// mu.Lock()
+		logger.Debug("Step completed", slog.String("step", name), slog.Any("output", out))
+
 		state.Set(name, out)
-		// results[name] = out
-		// mu.Unlock()
 		close(done[name])
 	}
 
-	for name, _ := range p.steps {
+	for name := range p.steps {
 		wg.Add(1)
 		go exec(name)
 	}
