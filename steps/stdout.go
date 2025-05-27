@@ -7,21 +7,25 @@ import (
 )
 
 type StdoutStep struct {
-	name string
+	name  string
+	value core.InterpolateValue[string]
 }
 
-func (s *StdoutStep) Name() string     { return s.name }
-func (s *StdoutStep) Inputs() []string { return nil }
-func (s *StdoutStep) Run(ctx context.Context, inputs map[string]*core.Data) (*core.Data, error) {
-	for name, d := range inputs {
-		for _, v := range d.Value {
-			fmt.Printf("[%s] => %v\n", name, v)
-		}
-		return &core.Data{Value: d.Value}, nil
+func (s *StdoutStep) Name() string { return s.name }
+
+func (s *StdoutStep) Run(ctx context.Context, state *core.PipelineState) (*core.Data, error) {
+	value, err := s.value.Resolve(state)
+	if err != nil {
+		return nil, core.ErrInterpolate("value", s.value.Raw)
 	}
-	return nil, nil
+	fmt.Printf("%v\n", value)
+	return &core.Data{Value: value}, nil
 }
 
 func newStdoutStep(name string, config map[string]any) (core.Step, error) {
-	return &StdoutStep{name: name}, nil
+	value, ok := config["value"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing 'value' in stdout step")
+	}
+	return &StdoutStep{name: name, value: core.InterpolateValue[string]{Raw: value}}, nil
 }

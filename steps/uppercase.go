@@ -2,32 +2,32 @@ package steps
 
 import (
 	"context"
+	"fmt"
 	"go-etl/core"
 	"strings"
 )
 
 type UppercaseStep struct {
-	name string
+	name  string
+	value core.InterpolateValue[string]
 }
 
-func (f *UppercaseStep) Name() string     { return f.name }
-func (f *UppercaseStep) Inputs() []string { return nil }
-func (f *UppercaseStep) Run(ctx context.Context, inputs map[string]*core.Data) (*core.Data, error) {
-	for _, d := range inputs {
-		outputs := make([]any, len(d.Value))
-		for i, v := range d.Value {
-			if str, ok := v.(string); ok {
-				outputs[i] = strings.ToUpper(str)
-			} else {
-				outputs[i] = strings.ToUpper(str)
-			}
-		}
+func (f *UppercaseStep) Name() string { return f.name }
 
-		return &core.Data{Value: outputs}, nil
+func (f *UppercaseStep) Run(ctx context.Context, state *core.PipelineState) (*core.Data, error) {
+	value, err := f.value.Resolve(state)
+	if err != nil {
+		return nil, core.ErrInterpolate("value", f.value.Raw)
 	}
-	return nil, nil
+
+	return &core.Data{Value: strings.ToUpper(value)}, nil
 }
 
-func newUppercaseStep(name string, _ map[string]any) (core.Step, error) {
-	return &UppercaseStep{name: name}, nil
+func newUppercaseStep(name string, config map[string]any) (core.Step, error) {
+	value, ok := config["value"]
+	if !ok {
+		return nil, core.ErrMissingConfig("value")
+	}
+
+	return &UppercaseStep{name: name, value: core.InterpolateValue[string]{Raw: fmt.Sprintf("%s", value)}}, nil
 }

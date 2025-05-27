@@ -39,8 +39,9 @@ func LoadPipeline(config PipelineConfig) (*Pipeline, error) {
 }
 
 func (p *Pipeline) Run(ctx context.Context) error {
-	results := make(map[string]*core.Data)
-	var mu sync.Mutex
+	state := &core.PipelineState{Results: make(map[string]*core.Data)}
+	// results := make(map[string]*core.Data)
+	// var mu sync.Mutex
 	var wg sync.WaitGroup
 	done := make(map[string]chan struct{})
 	for name := range p.steps {
@@ -53,21 +54,22 @@ func (p *Pipeline) Run(ctx context.Context) error {
 			<-done[dep]
 		}
 
-		inputData := make(map[string]*core.Data)
-		mu.Lock()
-		for _, dep := range p.inputs[name] {
-			inputData[dep] = results[dep]
-		}
-		mu.Unlock()
+		// inputData := make(map[string]*core.Data)
+		// mu.Lock()
+		// for _, dep := range p.inputs[name] {
+		// 	inputData[dep] = results[dep]
+		// }
+		// mu.Unlock()
 
-		out, err := p.steps[name].Run(ctx, inputData)
+		out, err := p.steps[name].Run(ctx, state)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Step %s failed: %v\n", name, err)
 		}
 
-		mu.Lock()
-		results[name] = out
-		mu.Unlock()
+		// mu.Lock()
+		state.Set(name, out)
+		// results[name] = out
+		// mu.Unlock()
 		close(done[name])
 	}
 
