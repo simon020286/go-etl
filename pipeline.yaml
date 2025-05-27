@@ -4,10 +4,17 @@ steps:
     config:
       path: input.txt
 
+  - name: delay1
+    type: delay
+    inputs: 
+      - read_file
+    config:
+      ms: 2000
+
   - name: transform1
     type: uppercase
     inputs: 
-      - read_file
+      - delay1
     config:
       value: '{{ .read_file }}'
 
@@ -27,6 +34,6 @@ steps:
   - name: print
     type: stdout
     inputs: 
-      - transform1
+      - transform2
     config:
       value: '{{ .transform1 }}'

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>ETL Monitor</title>
+</head>
+
+<body>
+    <h1>ETL Pipeline Monitor</h1>
+    <input type="file" id="yamlFile" />
+    <button onclick="upload()">Upload</button>
+    <button onclick="start()">Start</button>
+    <pre class="mermaid">
+    </pre>
+    <ul id="log">
+        
+    </ul>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'base',
+            flowchart: {
+                useMaxWidth: false,
+                htmlLabels: true
+            }
+        });
+
+        window.renderGraph = (yamlContent) => {
+            const graphDefinition = `graph TD\n${yamlContent}`;
+            const graphElement = document.querySelector('.mermaid');
+            graphElement.textContent = graphDefinition;
+            delete(graphElement.dataset.processed);
+            mermaid.run();
+        };
+
+        const log = document.getElementById("log");
+        const socket = new WebSocket("ws://" + location.host + "/ws");
+        socket.onmessage = event => {
+            const li = document.createElement("li");
+            li.innerHTML = event.data;
+            log.appendChild(li);
+        };
+
+        window.upload = () => {
+            const fileInput = document.getElementById("yamlFile");
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append("file", file);
+
+            fetch("/upload", { method: "POST", body: formData })
+        }
+
+        window.start = async () => {
+            const fileInput = document.getElementById("yamlFile");
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append("file", file);
+
+            const res = await fetch("/print", { method: "POST", body: formData });
+            const data = await res.json();
+            console.log(data);
+
+            let content = '';
+            for (const item of data.Steps) {
+                if (!item.Inputs) {
+                    content += `${item.Name}\n`;
+                    continue;
+                }
+                for (const input of item.Inputs) {
+                    content += `${input}-->${item.Name}["${item.Name} (${item.Type})"]\n`;
+                }
+            }
+
+            renderGraph(content);
+        }
+    </script>
+</body>
+
+</html>

@@ -10,9 +10,10 @@ import (
 )
 
 type Pipeline struct {
-	steps  map[string]core.Step
-	graph  map[string][]string
-	inputs map[string][]string
+	steps    map[string]core.Step
+	graph    map[string][]string
+	inputs   map[string][]string
+	OnChange func(step string, data *core.Data)
 }
 
 func LoadPipeline(config PipelineConfig) (*Pipeline, error) {
@@ -64,6 +65,9 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 
 		state.Set(name, out)
 		close(done[name])
+		if p.OnChange != nil {
+			p.OnChange(name, out)
+		}
 	}
 
 	for name := range p.steps {
