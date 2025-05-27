@@ -14,7 +14,7 @@ type FileStep struct {
 
 func (f *FileStep) Name() string { return f.name }
 
-func (f *FileStep) Run(ctx context.Context, state *core.PipelineState) (*core.Data, error) {
+func (f *FileStep) Run(ctx context.Context, state *core.PipelineState) (map[string]*core.Data, error) {
 	path, err := f.path.Resolve(state)
 	if err != nil {
 		return nil, core.ErrInterpolate("path", f.path.Raw)
@@ -24,7 +24,7 @@ func (f *FileStep) Run(ctx context.Context, state *core.PipelineState) (*core.Da
 	if err != nil {
 		return nil, err
 	}
-	return &core.Data{Value: string(b)}, nil
+	return core.CreateDefaultResultData(string(b)), nil
 }
 
 func newFileStep(name string, config map[string]any) (core.Step, error) {

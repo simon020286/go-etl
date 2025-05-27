@@ -3,6 +3,8 @@ package core
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
@@ -12,16 +14,29 @@ type Data struct {
 	Value any
 }
 
+func CreateDefaultResultData(value any) map[string]*Data {
+	return CreateResultData("default", value)
+}
+
+func CreateResultData(name string, value any) map[string]*Data {
+	return map[string]*Data{
+		name: {
+			Value: &Data{Value: value},
+		},
+	}
+}
+
 type Step interface {
 	Name() string
-	Run(ctx context.Context, state *PipelineState) (*Data, error)
+	Run(ctx context.Context, state *PipelineState) (map[string]*Data, error)
 }
 
 type StepFactory func(name string, config map[string]any) (Step, error)
 
 // InterpolateValue is a generic type for values that support interpolation
 type InterpolateValue[T any] struct {
-	Raw any
+	Raw        any
+	TargetType string // Optional, can be used to specify the type of the value
 }
 
 func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
@@ -35,12 +50,15 @@ func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 
 	ctx := make(map[string]any)
 	state.mu.RLock()
-	for k, v := range state.Results {
-		ctx[k] = v.Value
+	for stepName, outputs := range state.Results {
+		for outName, data := range outputs {
+			ctx[fmt.Sprintf("%s:%s", stepName, outName)] = data.Value
+		}
 	}
 	state.mu.RUnlock()
 	var t T
-	tmpl, err := template.New("interpolate").Parse(iv.Raw.(string))
+	tmpl, err := template.New("interpolate").
+		Parse(iv.Raw.(string))
 	if err != nil {
 		return t, err
 	}
@@ -53,35 +71,74 @@ func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 	out := output.String()
 	switch any(t).(type) {
 	case int:
-		var parsed int
-		_, err := fmt.Sscanf(out, "%d", &parsed)
-		return any(parsed).(T), err
+		// var parsed int
+		// _, err := fmt.Sscanf(out, "%d", &parsed)
+		// return any(parsed).(T), err
+		v, err := strconv.Atoi(out)
+		return any(v).(T), err
 	case string:
 		return any(out).(T), nil
 	case bool:
-		var parsed bool
-		_, err := fmt.Sscanf(out, "%t", &parsed)
-		return any(parsed).(T), err
+		// var parsed bool
+		// _, err := fmt.Sscanf(out, "%t", &parsed)
+		// return any(parsed).(T), err
+		v, err := strconv.ParseBool(out)
+		return any(v).(T), err
 	default:
-		return t, fmt.Errorf("unsupported type")
+		switch iv.TargetType {
+		case "int":
+			// var parsed int
+			// _, err := fmt.Sscanf(out, "%d", &parsed)
+			// return any(parsed).(T), err
+			v, err := strconv.Atoi(out)
+			return any(v).(T), err
+		case "bool":
+			// var parsed bool
+			// _, err := fmt.Sscanf(out, "%t", &parsed)
+			// return any(parsed).(T), err
+			v, err := strconv.ParseBool(out)
+			return any(v).(T), err
+		case "string":
+			return any(out).(T), nil
+		default:
+			return t, fmt.Errorf("unsupported target type: %s", iv.TargetType)
+		}
 	}
 }
 
 // PipelineState holds results of executed steps
 type PipelineState struct {
-	Results map[string]*Data
+	Results map[string]map[string]*Data
 	mu      sync.RWMutex
+	Logger  *slog.Logger
 }
 
-func (ps *PipelineState) Get(name string) (*Data, bool) {
+func (ps *PipelineState) Get(stepName, outputName string) (*Data, bool) {
 	ps.mu.RLock()
 	defer ps.mu.RUnlock()
-	res, ok := ps.Results[name]
-	return res, ok
+	stepOutputs, ok := ps.Results[stepName]
+	if !ok {
+		return nil, false
+	}
+	data, ok := stepOutputs[outputName]
+	return data, ok
 }
 
-func (ps *PipelineState) Set(name string, data *Data) {
+func (ps *PipelineState) Set(name string, data map[string]*Data) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	ps.Results[name] = data
 }
+
+type ChangeEvent struct {
+	StepName string
+	Type     ChangeEventType
+	Data     map[string]*Data
+}
+
+type ChangeEventType string
+
+const (
+	ChangeEventTypeStart ChangeEventType = "start"
+	ChangeEventTypeEnd   ChangeEventType = "end"
+)

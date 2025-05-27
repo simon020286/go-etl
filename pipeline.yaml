@@ -1,19 +1,19 @@
 steps:
-  - name: read_file
-    type: file
+  - name: if1
+    type: if
     config:
-      path: input.txt
+      condition: false
 
-  - name: transform1
-    type: uppercase
-    inputs: 
-      - read_file
-    config:
-      value: '{{ .read_file }}'
-
-  - name: print
+  - name: print1
     type: stdout
     inputs: 
-      - transform1
+      - if1:true
     config:
-      value: '{{ .transform1 }}'
+      value: True result
+
+  - name: print2
+    type: stdout
+    inputs: 
+      - if1:false
+    config:
+      value: False result
