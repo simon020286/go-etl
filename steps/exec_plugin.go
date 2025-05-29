@@ -19,7 +19,7 @@ type ExecPluginStep struct {
 
 func (e *ExecPluginStep) Name() string { return e.name }
 
-func (e *ExecPluginStep) Run(ctx context.Context, state *core.PipelineState) (*core.Data, error) {
+func (e *ExecPluginStep) Run(ctx context.Context, state *core.PipelineState) (map[string]*core.Data, error) {
 	var data *core.Data
 
 	if data == nil {
@@ -49,7 +49,7 @@ func (e *ExecPluginStep) Run(ctx context.Context, state *core.PipelineState) (*c
 		return nil, err
 	}
 
-	return &core.Data{Value: result["value"]}, nil
+	return core.CreateDefaultResultData(result), nil
 
 }
 

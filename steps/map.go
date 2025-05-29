@@ -13,7 +13,7 @@ type MapStep struct {
 
 func (m *MapStep) Name() string { return m.name }
 
-func (m *MapStep) Run(ctx context.Context, state *core.PipelineState) (*core.Data, error) {
+func (m *MapStep) Run(ctx context.Context, state *core.PipelineState) (map[string]*core.Data, error) {
 	fields := make(map[string]any)
 	for key, iv := range m.fields {
 		resolved, err := iv.Resolve(state)
@@ -23,7 +23,7 @@ func (m *MapStep) Run(ctx context.Context, state *core.PipelineState) (*core.Dat
 		fields[key] = resolved
 	}
 
-	return &core.Data{Value: fields}, nil
+	return core.CreateDefaultResultData(fields), nil
 }
 
 func newMapStep(name string, config map[string]any) (core.Step, error) {

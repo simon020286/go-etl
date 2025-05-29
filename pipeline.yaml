@@ -1,39 +1,19 @@
 steps:
-  - name: read_file
-    type: file
+  - name: if1
+    type: if
     config:
-      path: input.txt
+      condition: false
 
-  - name: delay1
-    type: delay
-    inputs: 
-      - read_file
-    config:
-      ms: 2000
-
-  - name: transform1
-    type: uppercase
-    inputs: 
-      - delay1
-    config:
-      value: '{{ .read_file }}'
-
-  - name: transform2
-    type: map
-    inputs: 
-      - transform1
-    config:
-      fields:
-        - name: first_char
-          value: '{{ .transform1 }}'
-          type: string
-        - name: length
-          value: '{{ len .transform1 }}'
-          type: int
-
-  - name: print
+  - name: print1
     type: stdout
     inputs: 
-      - transform2
+      - if1:true
     config:
-      value: '{{ .transform1 }}'
+      value: True result
+
+  - name: print2
+    type: stdout
+    inputs: 
+      - if1:false
+    config:
+      value: False result

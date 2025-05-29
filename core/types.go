@@ -14,9 +14,21 @@ type Data struct {
 	Value any
 }
 
+func CreateDefaultResultData(value any) map[string]*Data {
+	return CreateResultData("default", value)
+}
+
+func CreateResultData(name string, value any) map[string]*Data {
+	return map[string]*Data{
+		name: {
+			Value: &Data{Value: value},
+		},
+	}
+}
+
 type Step interface {
 	Name() string
-	Run(ctx context.Context, state *PipelineState) (*Data, error)
+	Run(ctx context.Context, state *PipelineState) (map[string]*Data, error)
 }
 
 type StepFactory func(name string, config map[string]any) (Step, error)
@@ -38,8 +50,10 @@ func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 
 	ctx := make(map[string]any)
 	state.mu.RLock()
-	for k, v := range state.Results {
-		ctx[k] = v.Value
+	for stepName, outputs := range state.Results {
+		for outName, data := range outputs {
+			ctx[fmt.Sprintf("%s:%s", stepName, outName)] = data.Value
+		}
 	}
 	state.mu.RUnlock()
 	var t T
@@ -94,20 +108,37 @@ func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 
 // PipelineState holds results of executed steps
 type PipelineState struct {
-	Results map[string]*Data
+	Results map[string]map[string]*Data
 	mu      sync.RWMutex
 	Logger  *slog.Logger
 }
 
-func (ps *PipelineState) Get(name string) (*Data, bool) {
+func (ps *PipelineState) Get(stepName, outputName string) (*Data, bool) {
 	ps.mu.RLock()
 	defer ps.mu.RUnlock()
-	res, ok := ps.Results[name]
-	return res, ok
+	stepOutputs, ok := ps.Results[stepName]
+	if !ok {
+		return nil, false
+	}
+	data, ok := stepOutputs[outputName]
+	return data, ok
 }
 
-func (ps *PipelineState) Set(name string, data *Data) {
+func (ps *PipelineState) Set(name string, data map[string]*Data) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	ps.Results[name] = data
 }
+
+type ChangeEvent struct {
+	StepName string
+	Type     ChangeEventType
+	Data     map[string]*Data
+}
+
+type ChangeEventType string
+
+const (
+	ChangeEventTypeStart ChangeEventType = "start"
+	ChangeEventTypeEnd   ChangeEventType = "end"
+)

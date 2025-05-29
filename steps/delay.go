@@ -14,13 +14,13 @@ type DelayStep struct {
 
 func (d *DelayStep) Name() string { return d.name }
 
-func (d *DelayStep) Run(ctx context.Context, state *core.PipelineState) (*core.Data, error) {
+func (d *DelayStep) Run(ctx context.Context, state *core.PipelineState) (map[string]*core.Data, error) {
 	delay, err := d.delay.Resolve(state)
 	if err != nil {
 		return nil, core.ErrInterpolate("delay", d.delay.Raw)
 	}
 	time.Sleep(time.Duration(delay) * time.Millisecond)
-	return &core.Data{Value: nil}, nil
+	return core.CreateDefaultResultData(nil), nil
 }
 
 func newDelayStep(name string, config map[string]any) (core.Step, error) {

@@ -14,13 +14,13 @@ type UppercaseStep struct {
 
 func (f *UppercaseStep) Name() string { return f.name }
 
-func (f *UppercaseStep) Run(ctx context.Context, state *core.PipelineState) (*core.Data, error) {
+func (f *UppercaseStep) Run(ctx context.Context, state *core.PipelineState) (map[string]*core.Data, error) {
 	value, err := f.value.Resolve(state)
 	if err != nil {
 		return nil, core.ErrInterpolate("value", f.value.Raw)
 	}
 
-	return &core.Data{Value: strings.ToUpper(value)}, nil
+	return core.CreateDefaultResultData(strings.ToUpper(value)), nil
 }
 
 func newUppercaseStep(name string, config map[string]any) (core.Step, error) {
