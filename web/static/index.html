@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>ETL Monitor</title>
+</head>
+
+<body>
+    <h1>ETL Pipeline Monitor</h1>
+    <input type="file" id="yamlFile" />
+    <button onclick="upload()">Upload</button>
+    <button onclick="start()">Start</button>
+    <div style="display: flex;">
+        <pre class="mermaid">
+        </pre>
+        <ul id="log">
+        </ul>
+    </div>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+        let pipeline = null;
+
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'base',
+            flowchart: {
+                useMaxWidth: false,
+                htmlLabels: true
+            }
+        });
+
+        window.renderGraph = (yamlContent) => {
+            const graphDefinition = `graph TD\n${yamlContent}`;
+            const graphElement = document.querySelector('.mermaid');
+            graphElement.textContent = graphDefinition;
+            delete(graphElement.dataset.processed);
+            mermaid.run();
+        };
+
+        const log = document.getElementById("log");
+        const socket = new WebSocket("ws://" + location.host + "/ws");
+        socket.onmessage = event => {
+            const data = JSON.parse(event.data);
+            const paths = data.path.split("/");
+            if (paths.length > 2 && paths[0] === "step") {
+                const [path, op, step] = paths;
+                if (op === 'end' && step === 'print') {
+                    debugger;
+                }
+                
+                pipeline.Steps.forEach(item => {
+                    if (item.Name === step) {
+                        item.Status = op;
+                    }
+                });
+                
+                renderGraph(parsePipeline(pipeline));
+            }
+            
+            const li = document.createElement("li");
+            li.innerHTML = event.data;
+            log.appendChild(li);
+        };
+
+        window.upload = async () => {
+            const fileInput = document.getElementById("yamlFile");
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append("file", file);
+
+            const res = await fetch("/upload", { method: "POST", body: formData });
+            const data = await res.json();
+            pipeline = data;
+            const content = parsePipeline(pipeline);
+
+            renderGraph(content);
+        }
+
+        window.start = async () => {
+            const fileInput = document.getElementById("yamlFile");
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append("file", file);
+
+            const res = await fetch("/start", { method: "POST", body: formData });
+            const data = await res.json();
+        }
+
+        function parsePipeline(pipeline) {
+            let content = '';
+            for (const item of pipeline.Steps) {
+                if (!item.Inputs) {
+                    content += `${item.Name}["${item.Name} ${item.Status ?? 'not started'}"]\n`;
+                    continue;
+                }
+                for (const input of item.Inputs) {
+                    content += `${input}-->${item.Name}["${item.Name} (${item.Type}) ${item.Status ?? 'not started'}"]\n`;
+                }
+            }
+            return content;
+        }
+    </script>
+</body>
+
+</html>

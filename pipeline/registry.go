@@ -1,6 +1,8 @@
 package pipeline
 
-import "go-etl/core"
+import (
+	"go-etl/core"
+)
 
 type StepFactory func(name string, config map[string]any) (core.Step, error)
 

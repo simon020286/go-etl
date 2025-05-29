@@ -9,17 +9,22 @@ import (
 
 type FileStep struct {
 	name string
-	path string
+	path core.InterpolateValue[string]
 }
 
-func (f *FileStep) Name() string     { return f.name }
-func (f *FileStep) Inputs() []string { return nil }
-func (f *FileStep) Run(ctx context.Context, _ map[string]*core.Data) (*core.Data, error) {
-	b, err := os.ReadFile(f.path)
+func (f *FileStep) Name() string { return f.name }
+
+func (f *FileStep) Run(ctx context.Context, state *core.PipelineState) (map[string]*core.Data, error) {
+	path, err := f.path.Resolve(state)
+	if err != nil {
+		return nil, core.ErrInterpolate("path", f.path.Raw)
+	}
+
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return &core.Data{Value: []any{string(b)}}, nil
+	return core.CreateDefaultResultData(string(b)), nil
 }
 
 func newFileStep(name string, config map[string]any) (core.Step, error) {
@@ -27,5 +32,5 @@ func newFileStep(name string, config map[string]any) (core.Step, error) {
 	if !ok {
 		return nil, errors.New("missing 'path' in file step")
 	}
-	return &FileStep{name: name, path: path}, nil
+	return &FileStep{name: name, path: core.InterpolateValue[string]{Raw: path}}, nil
 }
