@@ -20,16 +20,7 @@ type ExecPluginStep struct {
 func (e *ExecPluginStep) Name() string { return e.name }
 
 func (e *ExecPluginStep) Run(ctx context.Context, state *core.PipelineState) (map[string]*core.Data, error) {
-	var data *core.Data
-
-	if data == nil {
-		data = &core.Data{Value: nil}
-	}
-
-	payload, err := json.Marshal(map[string]any{
-		"config": e.otherConfig,
-		"value":  data.Value,
-	})
+	payload, err := json.Marshal(e.otherConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +35,8 @@ func (e *ExecPluginStep) Run(ctx context.Context, state *core.PipelineState) (ma
 		return nil, err
 	}
 
-	var result map[string]any
+	var result any
+	state.Logger.Debug("exec_plugin step output", "name", e.name, "output", out.String())
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
 		return nil, err
 	}

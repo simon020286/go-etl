@@ -9,5 +9,6 @@ func init() {
 	pipeline.RegisterStepType("uppercase", newUppercaseStep)
 	pipeline.RegisterStepType("map", newMapStep)
 	pipeline.RegisterStepType("if", newIfStep)
+	pipeline.RegisterStepType("foreach", newForeachStep)
 	pipeline.RegisterStepType("plugin", newExecPluginStep)
 }
