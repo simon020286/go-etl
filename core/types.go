@@ -21,7 +21,7 @@ func CreateDefaultResultData(value any) map[string]*Data {
 func CreateResultData(name string, value any) map[string]*Data {
 	return map[string]*Data{
 		name: {
-			Value: &Data{Value: value},
+			Value: value,
 		},
 	}
 }
