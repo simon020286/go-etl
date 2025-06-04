@@ -11,3 +11,8 @@ var stepRegistry = make(map[string]StepFactory)
 func RegisterStepType(stepType string, factory StepFactory) {
 	stepRegistry[stepType] = factory
 }
+
+func GetStepFactory(stepType string) (StepFactory, bool) {
+	factory, exists := stepRegistry[stepType]
+	return factory, exists
+}

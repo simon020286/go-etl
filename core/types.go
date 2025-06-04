@@ -2,7 +2,7 @@ package core
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -21,7 +21,7 @@ func CreateDefaultResultData(value any) map[string]*Data {
 func CreateResultData(name string, value any) map[string]*Data {
 	return map[string]*Data{
 		name: {
-			Value: &Data{Value: value},
+			Value: value,
 		},
 	}
 }
@@ -52,13 +52,29 @@ func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 	state.mu.RLock()
 	for stepName, outputs := range state.Results {
 		for outName, data := range outputs {
-			ctx[fmt.Sprintf("%s:%s", stepName, outName)] = data.Value
+			if outName == "default" {
+				ctx[stepName] = data.Value
+			} else {
+				// ctx[stepName+"."+outName] = data.Value
+				if ctx[stepName] == nil {
+					ctx[stepName] = make(map[string]any)
+				}
+				stepCtx, _ := ctx[stepName].(map[string]any)
+				stepCtx[outName] = data.Value
+			}
 		}
 	}
 	state.mu.RUnlock()
 	var t T
 	tmpl, err := template.New("interpolate").
+		Funcs(template.FuncMap{
+			"toJson": func(v any) string {
+				jsonStr, _ := json.Marshal(v)
+				return string(jsonStr)
+			},
+		}).
 		Parse(iv.Raw.(string))
+
 	if err != nil {
 		return t, err
 	}
@@ -101,7 +117,9 @@ func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 		case "string":
 			return any(out).(T), nil
 		default:
-			return t, fmt.Errorf("unsupported target type: %s", iv.TargetType)
+			var jsonData T
+			err := json.Unmarshal([]byte(out), &jsonData)
+			return jsonData, err
 		}
 	}
 }

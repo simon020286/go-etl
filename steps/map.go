@@ -36,8 +36,6 @@ func newMapStep(name string, config map[string]any) (core.Step, error) {
 		return nil, fmt.Errorf("fields must be a list of maps, got %T", fields)
 	}
 
-	fmt.Printf("Creating MapStep with name: %s, fields: %v\n", name, fieldMap)
-
 	mapStepFields := make(map[string]core.InterpolateValue[any])
 
 	for _, field := range fieldMap {

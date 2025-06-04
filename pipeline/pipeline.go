@@ -16,6 +16,7 @@ type Pipeline struct {
 	steps    map[string]core.Step
 	graph    map[string][]string
 	inputs   map[string][]string
+	state    *core.PipelineState
 	OnChange func(event core.ChangeEvent)
 }
 
@@ -60,7 +61,10 @@ func LoadPipeline(config PipelineConfig) (*Pipeline, error) {
 }
 
 func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
-	state := &core.PipelineState{Results: make(map[string]map[string]*core.Data)}
+	if p.state == nil {
+		p.state = &core.PipelineState{Results: make(map[string]map[string]*core.Data), Logger: logger}
+	}
+	// state := &core.PipelineState{Results: make(map[string]map[string]*core.Data), Logger: logger}
 	done := make(map[string]chan struct{})
 	var wg sync.WaitGroup
 	mu := sync.Mutex{}
@@ -83,7 +87,7 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 			<-done[stepName]
 
 			mu.Lock()
-			if _, ok := state.Get(stepName, outputName); !ok {
+			if _, ok := p.state.Get(stepName, outputName); !ok {
 				mu.Unlock()
 				return
 			}
@@ -95,12 +99,12 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 			p.OnChange(core.ChangeEvent{Type: core.ChangeEventTypeStart, StepName: step.Name()})
 		}
 
-		outputs, err := step.Run(ctx, state)
+		outputs, err := step.Run(ctx, p.state)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Step %s failed: %v\n", step.Name(), err)
 			return
 		}
-		state.Set(step.Name(), outputs)
+		p.state.Set(step.Name(), outputs)
 		close(done[step.Name()])
 		logger.Debug("Step completed", slog.String("step", step.Name()), slog.Any("output", outputs))
 		if p.OnChange != nil {
@@ -115,4 +119,8 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 
 	wg.Wait()
 	return nil
+}
+
+func (p *Pipeline) SetState(state *core.PipelineState) {
+	p.state = state
 }

@@ -1,19 +1,45 @@
 steps:
-  - name: if1
-    type: if
+  - name: input1
+    type: map
     config:
-      condition: false
+      fields:
+        - name: data
+          value: [{"Codice":"1","Descrizione":"Decrizione1"}]
 
-  - name: print1
-    type: stdout
-    inputs: 
-      - if1:true
+  - name: foreach1
+    type: foreach
+    inputs:
+      - input1
     config:
-      value: True result
+      list: "{{ .input1.Value.data | toJson }}"
+      steps:
+        - name: say_hello
+          type: stdout
+          config:
+            value: "Hello {{ .foreach.item.Codice }}"
+        - name: transform1
+          type: map
+          config:
+            fields:
+              - name: Codice
+                value: "{{ .foreach.item.Codice }}"
+              - name: Descrizione
+                value: "{{ .foreach.item.Descrizione }}"
+  # - name: if1
+  #   type: if
+  #   config:
+  #     condition: false
 
-  - name: print2
-    type: stdout
-    inputs: 
-      - if1:false
-    config:
-      value: False result
+  # - name: print1
+  #   type: stdout
+  #   inputs: 
+  #     - if1:true
+  #   config:
+  #     value: True result
+
+  # - name: print2
+  #   type: stdout
+  #   inputs: 
+  #     - if1:false
+  #   config:
+  #     value: False result
