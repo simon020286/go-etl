@@ -1,10 +1,13 @@
 steps:
-  - name: input1
-    type: map
-    config:
-      fields:
-        - name: data
-          value: [{"Codice":"1","Descrizione":"Decrizione1"}]
+  # - name: input1
+  #   type: map
+  #   config:
+  #     fields:
+  #       - name: data
+  #         value: [{"Codice":"1","Descrizione":"Decrizione1"}]
+
+  - name: webhook1
+    type: webhook
 
   - name: foreach1
     type: foreach

@@ -10,5 +10,6 @@ func init() {
 	pipeline.RegisterStepType("map", newMapStep)
 	pipeline.RegisterStepType("if", newIfStep)
 	pipeline.RegisterStepType("foreach", newForeachStep)
+	pipeline.RegisterStepType("webhook", newWebhookStep)
 	pipeline.RegisterStepType("plugin", newExecPluginStep)
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"go-etl/core"
 	"go-etl/pipeline"
 	_ "go-etl/steps"
 	"go-etl/web"
@@ -40,6 +41,8 @@ func main() {
 		logger.Error("No pipeline file specified. Use -file to provide a YAML file or -web to start the web server.")
 		return
 	}
+
+	defer core.StopWebServer(context.Background())
 
 	if *webFlag {
 		web.StartServer(logger)

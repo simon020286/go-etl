@@ -14,6 +14,7 @@ import (
 
 type Pipeline struct {
 	steps    map[string]core.Step
+	triggers map[string]core.Trigger
 	graph    map[string][]string
 	inputs   map[string][]string
 	state    *core.PipelineState
@@ -38,11 +39,12 @@ func LoadPipelineFromFile(filePath string) (*Pipeline, error) {
 
 func LoadPipeline(config PipelineConfig) (*Pipeline, error) {
 	stepsMap := make(map[string]core.Step)
+	triggersMap := make(map[string]core.Step)
 	graph := make(map[string][]string)
 	inputs := make(map[string][]string)
 
 	for _, sc := range config.Steps {
-		factory, ok := stepRegistry[sc.Type]
+		factoryType, factory, ok := GetFactory(sc.Type)
 		if !ok {
 			return nil, fmt.Errorf("unknown step type: %s", sc.Type)
 		}
@@ -50,7 +52,12 @@ func LoadPipeline(config PipelineConfig) (*Pipeline, error) {
 		if err != nil {
 			return nil, err
 		}
-		stepsMap[sc.Name] = step
+		if factoryType == "trigger" {
+			triggersMap[sc.Name] = step
+		} else {
+			stepsMap[sc.Name] = step
+		}
+
 		inputs[sc.Name] = sc.Inputs
 		for _, input := range sc.Inputs {
 			graph[input] = append(graph[input], sc.Name)
@@ -64,7 +71,9 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 	if p.state == nil {
 		p.state = &core.PipelineState{Results: make(map[string]map[string]*core.Data), Logger: logger}
 	}
-	// state := &core.PipelineState{Results: make(map[string]map[string]*core.Data), Logger: logger}
+
+	core.StartWebServer()
+
 	done := make(map[string]chan struct{})
 	var wg sync.WaitGroup
 	mu := sync.Mutex{}
