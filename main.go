@@ -3,16 +3,16 @@ package main
 import (
 	"context"
 	"flag"
+	"log/slog"
+	"os"
+
 	"go-etl/core"
 	"go-etl/pipeline"
 	_ "go-etl/steps"
 	"go-etl/web"
-	"log/slog"
-	"os"
 )
 
 func main() {
-
 	webFlag := flag.Bool("web", false, "Start web server")
 	logFlag := flag.String("log", "debug", "Set log level (debug, info, warn, error)")
 	fileFlag := flag.String("file", "", "Path to pipeline YAML file")
@@ -37,6 +37,8 @@ func main() {
 		Level: logLevel, // o slog.LevelInfo
 	}))
 
+	slog.SetDefault(logger)
+
 	if fileFlag == nil && !*webFlag {
 		logger.Error("No pipeline file specified. Use -file to provide a YAML file or -web to start the web server.")
 		return
@@ -50,7 +52,6 @@ func main() {
 	}
 
 	pipeline, err := pipeline.LoadPipelineFromFile(*fileFlag)
-
 	if err != nil {
 		logger.Error("Failed to load pipeline", "error", err)
 		return

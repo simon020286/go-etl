@@ -2,8 +2,10 @@ package steps
 
 import (
 	"context"
-	"go-etl/core"
+	"log/slog"
 	"net/http"
+
+	"go-etl/core"
 )
 
 type WebhookStep struct {
@@ -21,8 +23,13 @@ func (s *WebhookStep) Run(ctx context.Context, state *core.PipelineState) (map[s
 	return core.CreateDefaultResultData("Webhook triggered"), nil
 }
 
-func (s *WebhookStep) Trigger() error {
+func (s *WebhookStep) SetOnTrigger(callback func()) error {
 	// This method is not used for webhook steps, as they are triggered by HTTP requests
+	go func() {
+		<-s.trigger
+		slog.Info("Webhook triggered")
+		callback()
+	}()
 	return nil
 }
 
@@ -30,14 +37,15 @@ func newWebhookStep(name string, config map[string]any) (core.Step, error) {
 	trigger := make(chan struct{})
 	core.GetWebServer().Mux().HandleFunc("/webhook/"+name, func(w http.ResponseWriter, r *http.Request) {
 		// Trigger the webhook step when a request is received
-		select {
-		case trigger <- struct{}{}:
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Webhook triggered"))
-		default:
-			w.WriteHeader(http.StatusTooManyRequests)
-			w.Write([]byte("Webhook already triggered"))
-		}
+		// select {
+		// case trigger <- struct{}{}:
+		trigger <- struct{}{}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Webhook triggered"))
+		//default:
+		//	w.WriteHeader(http.StatusTooManyRequests)
+		//	w.Write([]byte("Webhook already triggered"))
+		//}
 	})
 	return &WebhookStep{name: name, trigger: trigger}, nil
 }

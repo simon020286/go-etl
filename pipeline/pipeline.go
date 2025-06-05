@@ -3,11 +3,12 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"go-etl/core"
 	"log/slog"
 	"os"
 	"strings"
 	"sync"
+
+	"go-etl/core"
 
 	"gopkg.in/yaml.v3"
 )
@@ -15,7 +16,6 @@ import (
 type Pipeline struct {
 	steps    map[string]core.Step
 	triggers map[string]core.Trigger
-	graph    map[string][]string
 	inputs   map[string][]string
 	state    *core.PipelineState
 	OnChange func(event core.ChangeEvent)
@@ -39,8 +39,7 @@ func LoadPipelineFromFile(filePath string) (*Pipeline, error) {
 
 func LoadPipeline(config PipelineConfig) (*Pipeline, error) {
 	stepsMap := make(map[string]core.Step)
-	triggersMap := make(map[string]core.Step)
-	graph := make(map[string][]string)
+	triggersMap := make(map[string]core.Trigger)
 	inputs := make(map[string][]string)
 
 	for _, sc := range config.Steps {
@@ -53,18 +52,17 @@ func LoadPipeline(config PipelineConfig) (*Pipeline, error) {
 			return nil, err
 		}
 		if factoryType == "trigger" {
-			triggersMap[sc.Name] = step
+			triggersMap[sc.Name] = step.(core.Trigger)
 		} else {
 			stepsMap[sc.Name] = step
 		}
 
+		slog.Info("Load", slog.String("step", sc.Name), slog.String("type", factoryType))
+
 		inputs[sc.Name] = sc.Inputs
-		for _, input := range sc.Inputs {
-			graph[input] = append(graph[input], sc.Name)
-		}
 	}
 
-	return &Pipeline{steps: stepsMap, graph: graph, inputs: inputs}, nil
+	return &Pipeline{steps: stepsMap, triggers: triggersMap, inputs: inputs}, nil
 }
 
 func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
@@ -73,6 +71,12 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	core.StartWebServer()
+
+	if len(p.triggers) > 0 {
+		logger.Info("Found", slog.Int("triggers", len(p.triggers)))
+		p.RunFromTriggers()
+		return nil
+	}
 
 	done := make(map[string]chan struct{})
 	var wg sync.WaitGroup
@@ -132,4 +136,25 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 
 func (p *Pipeline) SetState(state *core.PipelineState) {
 	p.state = state
+}
+
+func (p *Pipeline) RunFromTriggers() {
+	// wg := sync.WaitGroup{}
+	// wg.Add(1)
+	for _, trigger := range p.triggers {
+		slog.Info("Trigger", "name", trigger.Name())
+		trigger.SetOnTrigger(func() {
+			newP := Pipeline{
+				steps: p.steps,
+			}
+
+			go func() {
+				_ = newP.Run(context.Background(), p.state.Logger)
+				slog.Info("Pipe line ended", slog.String("trigger", trigger.Name()))
+			}()
+		})
+	}
+	slog.Info("Waiting for triggers")
+	select {}
+	// wg.Wait()
 }

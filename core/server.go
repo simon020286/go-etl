@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 )
@@ -10,10 +11,13 @@ import (
 type WebServer struct {
 	mux    *http.ServeMux
 	server *http.Server
+	status http.ConnState
 }
 
-var lock = &sync.Mutex{}
-var instance *WebServer
+var (
+	lock     = &sync.Mutex{}
+	instance *WebServer
+)
 
 func NewWebServer(addr string) *WebServer {
 	mux := http.NewServeMux()
@@ -25,6 +29,7 @@ func NewWebServer(addr string) *WebServer {
 	return &WebServer{
 		mux:    mux,
 		server: server,
+		status: http.StateClosed,
 	}
 }
 
@@ -57,21 +62,24 @@ func (ws *WebServer) Mux() *http.ServeMux {
 }
 
 func (ws *WebServer) Start() {
-	if ws.server.ConnState != nil {
-		log.Println("Server is already running")
+	if ws.status == http.StateActive {
+		slog.Info("Server is already running")
 		return
 
 	}
 	go func() {
+		ws.status = http.StateActive
+
 		if err := ws.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Could not start server: %v", err)
 		}
+		slog.Info("Server stopped")
 	}()
 }
 
 func (ws *WebServer) Stop(ctx context.Context) error {
 	if err := ws.server.Shutdown(ctx); err != nil {
-		log.Printf("Error stopping server: %v", err)
+		slog.Error("Error stopping server:", slog.String("error", err.Error()))
 		return err
 	}
 	return nil
