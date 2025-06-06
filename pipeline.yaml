@@ -8,26 +8,31 @@ steps:
 
   - name: webhook1
     type: webhook
-
-  - name: foreach1
-    type: foreach
-    inputs:
-      - input1
+  
+  - name: print1
+    type: stdout
     config:
-      list: "{{ .input1.Value.data | toJson }}"
-      steps:
-        - name: say_hello
-          type: stdout
-          config:
-            value: "Hello {{ .foreach.item.Codice }}"
-        - name: transform1
-          type: map
-          config:
-            fields:
-              - name: Codice
-                value: "{{ .foreach.item.Codice }}"
-              - name: Descrizione
-                value: "{{ .foreach.item.Descrizione }}"
+      value: "{{ .webhook1.nome }}"
+
+ # - name: foreach1
+ #   type: foreach
+ #   inputs:
+ #     - input1
+ #   config:
+ #     list: "{{ .input1.Value.data | toJson }}"
+ #     steps:
+ #       - name: say_hello
+ #         type: stdout
+ #         config:
+ #           value: "Hello {{ .foreach.item.Codice }}"
+ #       - name: transform1
+ #         type: map
+ #         config:
+ #           fields:
+ #             - name: Codice
+ #               value: "{{ .foreach.item.Codice }}"
+ #             - name: Descrizione
+ #               value: "{{ .foreach.item.Descrizione }}"
   # - name: if1
   #   type: if
   #   config:

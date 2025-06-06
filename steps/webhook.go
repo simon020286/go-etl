@@ -30,12 +30,12 @@ func (s *WebhookStep) Run(ctx context.Context, state *core.PipelineState) (map[s
 	return core.CreateDefaultResultData("Webhook triggered"), nil
 }
 
-func (s *WebhookStep) SetOnTrigger(callback func()) error {
+func (s *WebhookStep) SetOnTrigger(callback func(data map[string]*core.Data)) error {
 	// This method is not used for webhook steps, as they are triggered by HTTP requests
 	go func() {
 		for t := range s.trigger {
 			slog.Info("Webhook triggered", slog.Attr{Key: "value", Value: slog.AnyValue(t.Value)})
-			callback()
+			callback(core.CreateDefaultResultData(t.Value))
 		}
 	}()
 	return nil

@@ -143,9 +143,14 @@ func (p *Pipeline) RunFromTriggers() {
 	// wg.Add(1)
 	for _, trigger := range p.triggers {
 		slog.Info("Trigger", "name", trigger.Name())
-		trigger.SetOnTrigger(func() {
+		trigger.SetOnTrigger(func(data map[string]*core.Data) {
 			newP := Pipeline{
 				steps: p.steps,
+				state: &core.PipelineState{
+					Results: map[string]map[string]*core.Data{
+						trigger.Name(): data,
+					},
+				},
 			}
 
 			go func() {
