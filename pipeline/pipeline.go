@@ -3,18 +3,19 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"go-etl/core"
 	"log/slog"
 	"os"
 	"strings"
 	"sync"
+
+	"go-etl/core"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Pipeline struct {
 	steps    map[string]core.Step
-	graph    map[string][]string
+	triggers map[string]core.Trigger
 	inputs   map[string][]string
 	state    *core.PipelineState
 	OnChange func(event core.ChangeEvent)
@@ -38,11 +39,11 @@ func LoadPipelineFromFile(filePath string) (*Pipeline, error) {
 
 func LoadPipeline(config PipelineConfig) (*Pipeline, error) {
 	stepsMap := make(map[string]core.Step)
-	graph := make(map[string][]string)
+	triggersMap := make(map[string]core.Trigger)
 	inputs := make(map[string][]string)
 
 	for _, sc := range config.Steps {
-		factory, ok := stepRegistry[sc.Type]
+		factoryType, factory, ok := GetFactory(sc.Type)
 		if !ok {
 			return nil, fmt.Errorf("unknown step type: %s", sc.Type)
 		}
@@ -50,21 +51,33 @@ func LoadPipeline(config PipelineConfig) (*Pipeline, error) {
 		if err != nil {
 			return nil, err
 		}
-		stepsMap[sc.Name] = step
-		inputs[sc.Name] = sc.Inputs
-		for _, input := range sc.Inputs {
-			graph[input] = append(graph[input], sc.Name)
+		if factoryType == "trigger" {
+			triggersMap[sc.Name] = step.(core.Trigger)
+		} else {
+			stepsMap[sc.Name] = step
 		}
+
+		slog.Info("Load", slog.String("step", sc.Name), slog.String("type", factoryType))
+
+		inputs[sc.Name] = sc.Inputs
 	}
 
-	return &Pipeline{steps: stepsMap, graph: graph, inputs: inputs}, nil
+	return &Pipeline{steps: stepsMap, triggers: triggersMap, inputs: inputs}, nil
 }
 
 func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 	if p.state == nil {
 		p.state = &core.PipelineState{Results: make(map[string]map[string]*core.Data), Logger: logger}
 	}
-	// state := &core.PipelineState{Results: make(map[string]map[string]*core.Data), Logger: logger}
+
+	core.StartWebServer()
+
+	if len(p.triggers) > 0 {
+		logger.Info("Found", slog.Int("triggers", len(p.triggers)))
+		p.RunFromTriggers()
+		return nil
+	}
+
 	done := make(map[string]chan struct{})
 	var wg sync.WaitGroup
 	mu := sync.Mutex{}
@@ -123,4 +136,30 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 
 func (p *Pipeline) SetState(state *core.PipelineState) {
 	p.state = state
+}
+
+func (p *Pipeline) RunFromTriggers() {
+	// wg := sync.WaitGroup{}
+	// wg.Add(1)
+	for _, trigger := range p.triggers {
+		slog.Info("Trigger", "name", trigger.Name())
+		trigger.SetOnTrigger(func(data map[string]*core.Data) {
+			newP := Pipeline{
+				steps: p.steps,
+				state: &core.PipelineState{
+					Results: map[string]map[string]*core.Data{
+						trigger.Name(): data,
+					},
+				},
+			}
+
+			go func() {
+				_ = newP.Run(context.Background(), p.state.Logger)
+				slog.Info("Pipe line ended", slog.String("trigger", trigger.Name()))
+			}()
+		})
+	}
+	slog.Info("Waiting for triggers")
+	select {}
+	// wg.Wait()
 }

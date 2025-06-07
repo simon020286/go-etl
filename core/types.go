@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"strconv"
@@ -25,13 +24,6 @@ func CreateResultData(name string, value any) map[string]*Data {
 		},
 	}
 }
-
-type Step interface {
-	Name() string
-	Run(ctx context.Context, state *PipelineState) (map[string]*Data, error)
-}
-
-type StepFactory func(name string, config map[string]any) (Step, error)
 
 // InterpolateValue is a generic type for values that support interpolation
 type InterpolateValue[T any] struct {
