@@ -12,7 +12,7 @@
             "program": "${workspaceFolder}/main.go",
             "args": [
                 "-file",
-                "${workspaceFolder}/pipeline.yaml",
+                "${workspaceFolder}/examples/webhook/pipeline.yaml",
             ]
         }
     ]
