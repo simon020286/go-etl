@@ -47,8 +47,13 @@ func newWebhookStep(name string, config map[string]any) (core.Step, error) {
 		method = "GET" // Default to GET if not specified
 	}
 
+	path, ok := config["path"].(string)
+	if !ok {
+		path = name // Default path if not specified
+	}
+
 	trigger := make(chan webhookResponse)
-	core.GetWebServer().Mux().HandleFunc("/webhook/"+name, func(w http.ResponseWriter, r *http.Request) {
+	core.GetWebServer().Mux().HandleFunc("/webhook/"+path, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != method {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
