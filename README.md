@@ -19,6 +19,29 @@ etl -file pipeline.yml
 etl -web
 ```
 
+### Template syntax
+The project uses Goja, a pure Go implementation of the JavaScript runtime, as the scripting engine for template evaluation.
+Each step's configuration parameters can use JavaScript syntax. For example:
+
+```yaml
+name: StepName
+type: uppercase
+config:
+    value: "'text to uppercase'"
+```
+
+In this case, the static string will be converted to uppercase.
+
+You can also reference the output of a previous step. For example:
+```yaml
+name: StepName
+type: uppercase
+config:
+    value: ctx.input1.description
+```
+In this expression, `ctx` is the execution context, and each step’s output is available through it. You should always refer to `ctx` when accessing data from previous steps.
+
+
 ### Available Steps
 
 | Type        | Description                                     |
