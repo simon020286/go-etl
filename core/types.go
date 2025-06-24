@@ -1,16 +1,19 @@
 package core
 
 import (
-	"encoding/json"
+	"fmt"
 	"log/slog"
-	"strconv"
-	"strings"
 	"sync"
-	"text/template"
+
+	"github.com/dop251/goja"
 )
 
 type Data struct {
 	Value any
+}
+
+func (d *Data) String() string {
+	return fmt.Sprintf("%v", d.Value)
 }
 
 func CreateDefaultResultData(value any) map[string]*Data {
@@ -31,6 +34,91 @@ type InterpolateValue[T any] struct {
 	TargetType string // Optional, can be used to specify the type of the value
 }
 
+// func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
+// 	if v, ok := iv.Raw.(T); ok {
+// 		// Ensure that if T is string, we don't return here (we want to interpolate strings)
+// 		_, isString := any(v).(string)
+// 		if !isString {
+// 			return v, nil
+// 		}
+// 	}
+
+// 	ctx := make(map[string]any)
+// 	state.mu.RLock()
+// 	for stepName, outputs := range state.Results {
+// 		for outName, data := range outputs {
+// 			if outName == "default" {
+// 				ctx[stepName] = data.Value
+// 			} else {
+// 				// ctx[stepName+"."+outName] = data.Value
+// 				if ctx[stepName] == nil {
+// 					ctx[stepName] = make(map[string]any)
+// 				}
+// 				stepCtx, _ := ctx[stepName].(map[string]any)
+// 				stepCtx[outName] = data.Value
+// 			}
+// 		}
+// 	}
+// 	state.mu.RUnlock()
+// 	var t T
+// 	tmpl, err := template.New("interpolate").
+// 		Funcs(template.FuncMap{
+// 			"toJson": func(v any) string {
+// 				jsonStr, _ := json.Marshal(v)
+// 				return string(jsonStr)
+// 			},
+// 		}).
+// 		Parse(iv.Raw.(string))
+
+// 	if err != nil {
+// 		return t, err
+// 	}
+// 	// var buf []byte
+// 	output := new(strings.Builder)
+// 	err = tmpl.Execute(output, ctx)
+// 	if err != nil {
+// 		return t, err
+// 	}
+// 	out := output.String()
+// 	switch any(t).(type) {
+// 	case int:
+// 		// var parsed int
+// 		// _, err := fmt.Sscanf(out, "%d", &parsed)
+// 		// return any(parsed).(T), err
+// 		v, err := strconv.Atoi(out)
+// 		return any(v).(T), err
+// 	case string:
+// 		return any(out).(T), nil
+// 	case bool:
+// 		// var parsed bool
+// 		// _, err := fmt.Sscanf(out, "%t", &parsed)
+// 		// return any(parsed).(T), err
+// 		v, err := strconv.ParseBool(out)
+// 		return any(v).(T), err
+// 	default:
+// 		switch iv.TargetType {
+// 		case "int":
+// 			// var parsed int
+// 			// _, err := fmt.Sscanf(out, "%d", &parsed)
+// 			// return any(parsed).(T), err
+// 			v, err := strconv.Atoi(out)
+// 			return any(v).(T), err
+// 		case "bool":
+// 			// var parsed bool
+// 			// _, err := fmt.Sscanf(out, "%t", &parsed)
+// 			// return any(parsed).(T), err
+// 			v, err := strconv.ParseBool(out)
+// 			return any(v).(T), err
+// 		case "string":
+// 			return any(out).(T), nil
+// 		default:
+// 			var jsonData T
+// 			err := json.Unmarshal([]byte(out), &jsonData)
+// 			return jsonData, err
+// 		}
+// 	}
+// }
+
 func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 	if v, ok := iv.Raw.(T); ok {
 		// Ensure that if T is string, we don't return here (we want to interpolate strings)
@@ -40,8 +128,10 @@ func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 		}
 	}
 
+	runtime := goja.New()
 	ctx := make(map[string]any)
 	state.mu.RLock()
+
 	for stepName, outputs := range state.Results {
 		for outName, data := range outputs {
 			if outName == "default" {
@@ -57,62 +147,29 @@ func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 		}
 	}
 	state.mu.RUnlock()
-	var t T
-	tmpl, err := template.New("interpolate").
-		Funcs(template.FuncMap{
-			"toJson": func(v any) string {
-				jsonStr, _ := json.Marshal(v)
-				return string(jsonStr)
-			},
-		}).
-		Parse(iv.Raw.(string))
 
+	var t T
+	err := runtime.Set("ctx", ctx)
 	if err != nil {
 		return t, err
 	}
-	// var buf []byte
-	output := new(strings.Builder)
-	err = tmpl.Execute(output, ctx)
+
+	result, err := runtime.RunString(iv.Raw.(string))
 	if err != nil {
 		return t, err
 	}
-	out := output.String()
+
 	switch any(t).(type) {
 	case int:
-		// var parsed int
-		// _, err := fmt.Sscanf(out, "%d", &parsed)
-		// return any(parsed).(T), err
-		v, err := strconv.Atoi(out)
-		return any(v).(T), err
+		return any(result.ToInteger()).(T), nil
+	case float64:
+		return any(result.ToFloat()).(T), nil
 	case string:
-		return any(out).(T), nil
+		return any(result.String()).(T), nil
 	case bool:
-		// var parsed bool
-		// _, err := fmt.Sscanf(out, "%t", &parsed)
-		// return any(parsed).(T), err
-		v, err := strconv.ParseBool(out)
-		return any(v).(T), err
+		return any(result.ToBoolean()).(T), nil
 	default:
-		switch iv.TargetType {
-		case "int":
-			// var parsed int
-			// _, err := fmt.Sscanf(out, "%d", &parsed)
-			// return any(parsed).(T), err
-			v, err := strconv.Atoi(out)
-			return any(v).(T), err
-		case "bool":
-			// var parsed bool
-			// _, err := fmt.Sscanf(out, "%t", &parsed)
-			// return any(parsed).(T), err
-			v, err := strconv.ParseBool(out)
-			return any(v).(T), err
-		case "string":
-			return any(out).(T), nil
-		default:
-			var jsonData T
-			err := json.Unmarshal([]byte(out), &jsonData)
-			return jsonData, err
-		}
+		return any(result.Export()).(T), nil
 	}
 }
 

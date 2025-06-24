@@ -48,7 +48,7 @@ func TestUppercase(t *testing.T) {
 	}
 
 	stepInstance, err := stepFactory("testUppercase", map[string]any{
-		"value": "hello world",
+		"value": "'hello world'",
 	})
 
 	if err != nil {
@@ -86,11 +86,11 @@ func TestMap(t *testing.T) {
 		"fields": []interface{}{
 			map[string]any{
 				"name":  "code",
-				"value": "code1",
+				"value": "ctx.input1.code",
 			},
 			map[string]any{
 				"name":  "description",
-				"value": "description1",
+				"value": "ctx.input1.description",
 			}},
 	})
 
@@ -105,7 +105,16 @@ func TestMap(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	state := &core.PipelineState{}
+	input1Result := core.CreateDefaultResultData(map[string]interface{}{
+		"code":        "code1",
+		"description": "description1",
+	})
+
+	state := &core.PipelineState{
+		Results: map[string]map[string]*core.Data{
+			"input1": input1Result,
+		},
+	}
 	result, err := stepInstance.Run(ctx, state)
 	if err != nil {
 		t.Errorf("Step execution failed: %v", err)
