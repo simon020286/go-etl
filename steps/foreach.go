@@ -45,21 +45,11 @@ func (f *ForeachStep) Run(ctx context.Context, state *core.PipelineState) (map[s
 		if err != nil {
 			return nil, fmt.Errorf("foreach substep failed: %v", err)
 		}
-		// for _, step := range f.subSteps {
-		// 	_, err := step.Run(ctx, subState)
-		// 	if err != nil {
-		// 		return nil, fmt.Errorf("foreach substep failed: %v", err)
-		// 	}
-		// }
 	}
 	return map[string]*core.Data{"default": {Value: fmt.Sprintf("processed %d items", len(list))}}, nil
 }
 
 func newForeachStep(name string, config map[string]any) (core.Step, error) {
-	// itemVar, ok := config["item_var"].(string)
-	// if !ok {
-	// 	return nil, fmt.Errorf("foreach requires 'item_var'")
-	// }
 	stepsCfg, ok := config["steps"].([]any)
 	if !ok {
 		return nil, fmt.Errorf("foreach requires 'steps' array")
@@ -71,9 +61,6 @@ func newForeachStep(name string, config map[string]any) (core.Step, error) {
 	}
 
 	var subSteps []pipeline.StepConfig
-	// pipelineConfig := pipeline.PipelineConfig{
-	// 	Steps: make([]pipeline.StepConfig, 0, len(stepsCfg)),
-	// }
 
 	for _, raw := range stepsCfg {
 		m, ok := raw.((map[string]any))
@@ -92,40 +79,7 @@ func newForeachStep(name string, config map[string]any) (core.Step, error) {
 		}
 
 		subSteps = append(subSteps, subStep)
-		// name, _ := m["name"].(string)
-		// typeStr, _ := m["type"].(string)
-		// // cfg := make(map[string]any)
-
-		// // for k, v := range m {
-		// // 	switch k {
-		// // 	case "name", "type":
-		// // 		continue
-		// // 	default:
-		// // 		cfg[k] = v
-		// // 	}
-		// // }
-		// factory, ok := pipeline.GetStepFactory(typeStr)
-		// if !ok {
-		// 	return nil, fmt.Errorf("unknown substep type: %s", typeStr)
-		// }
-
-		// cfg, _ := m["config"].(map[string]interface{})
-
-		// // if err != nil {
-		// // 	return nil, fmt.Errorf("failed to parse substep config: %v", err)
-		// // }
-
-		// step, err := factory(name, cfg)
-		// if err != nil {
-		// 	return nil, err
-		// }
-		// subSteps = append(subSteps, step)
 	}
 
-	// p, err := pipeline.LoadPipeline(pipelineConfig)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to load substeps pipeline: %v", err)
-	// }
-	// err = p.Run(ctx, state.Logger)
 	return &ForeachStep{name: name, list: core.InterpolateValue[[]any]{Raw: list}, subSteps: subSteps}, nil
 }

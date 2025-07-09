@@ -1,0 +1,13 @@
+{
+    "name": "Uppercase Plugin",
+    "version": "1.0.0",
+    "description": "A simple plugin that converts text to uppercase.",
+    "inputs": {
+        "value": {
+            "type": "text",
+            "label": "Input Text",
+            "required": true,
+            "interpolation": true
+        }
+    }
+}
