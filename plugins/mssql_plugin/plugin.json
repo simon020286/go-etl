@@ -1,0 +1,19 @@
+{
+    "name": "MSSql Plugin",
+    "version": "1.0.0",
+    "description": "Microsoft Sql plugin.",
+    "inputs": {
+        "connection": {
+            "type": "text",
+            "label": "Conneciton string",
+            "required": true,
+            "interpolation": false
+        },
+        "query": {
+            "type": "text",
+            "label": "Query",
+            "required": true,
+            "interpolation": true
+        }
+    }
+}
