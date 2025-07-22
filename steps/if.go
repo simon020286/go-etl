@@ -3,6 +3,7 @@ package steps
 import (
 	"context"
 	"go-etl/core"
+	"go-etl/pipeline"
 )
 
 type IfStep struct {
@@ -25,11 +26,13 @@ func (f *IfStep) Run(ctx context.Context, state *core.PipelineState) (map[string
 	return core.CreateResultData("false", nil), nil
 }
 
-func newIfStep(name string, config map[string]any) (core.Step, error) {
-	condition, ok := config["condition"]
-	if !ok {
-		return nil, core.ErrMissingConfig("condition")
-	}
+func init() {
+	pipeline.RegisterStepType("if", func(name string, config map[string]any) (core.Step, error) {
+		condition, ok := config["condition"]
+		if !ok {
+			return nil, core.ErrMissingConfig("condition")
+		}
 
-	return &IfStep{name: name, condition: core.InterpolateValue[bool]{Raw: condition}}, nil
+		return &IfStep{name: name, condition: core.InterpolateValue[bool]{Raw: condition}}, nil
+	})
 }

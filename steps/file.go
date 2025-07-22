@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"go-etl/core"
+	"go-etl/pipeline"
 	"os"
 )
 
@@ -27,10 +28,12 @@ func (f *FileStep) Run(ctx context.Context, state *core.PipelineState) (map[stri
 	return core.CreateDefaultResultData(string(b)), nil
 }
 
-func newFileStep(name string, config map[string]any) (core.Step, error) {
-	path, ok := config["path"].(string)
-	if !ok {
-		return nil, errors.New("missing 'path' in file step")
-	}
-	return &FileStep{name: name, path: core.InterpolateValue[string]{Raw: path}}, nil
+func init() {
+	pipeline.RegisterStepType("file", func(name string, config map[string]any) (core.Step, error) {
+		path, ok := config["path"].(string)
+		if !ok {
+			return nil, errors.New("missing 'path' in file step")
+		}
+		return &FileStep{name: name, path: core.InterpolateValue[string]{Raw: path}}, nil
+	})
 }

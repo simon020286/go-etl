@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-etl/core"
+	"go-etl/pipeline"
 	"io"
 	"net/http"
 )
@@ -99,35 +100,37 @@ func (h *HTTPClientStep) Run(ctx context.Context, state *core.PipelineState) (ma
 	return core.CreateDefaultResultData(responseData), nil
 }
 
-func newHTTPClientStep(name string, config map[string]any) (core.Step, error) {
-	url, ok := config["url"].(string)
-	if !ok {
-		return nil, core.ErrMissingConfig("missing or invalid 'url' in HTTP client step")
-	}
+func init() {
+	pipeline.RegisterStepType("http client", func(name string, config map[string]any) (core.Step, error) {
+		url, ok := config["url"].(string)
+		if !ok {
+			return nil, core.ErrMissingConfig("missing or invalid 'url' in HTTP client step")
+		}
 
-	method, ok := config["method"].(string)
-	if !ok {
-		return nil, core.ErrMissingConfig("missing or invalid 'method' in HTTP client step")
-	}
+		method, ok := config["method"].(string)
+		if !ok {
+			return nil, core.ErrMissingConfig("missing or invalid 'method' in HTTP client step")
+		}
 
-	headers, ok := config["headers"].(map[string]string)
-	if !ok {
-		headers = make(map[string]string) // Default to empty headers if not provided
-	}
+		headers, ok := config["headers"].(map[string]string)
+		if !ok {
+			headers = make(map[string]string) // Default to empty headers if not provided
+		}
 
-	response, ok := config["response"].(string)
-	if !ok {
-		response = "json"
-	}
+		response, ok := config["response"].(string)
+		if !ok {
+			response = "json"
+		}
 
-	body := config["body"] // Body can be optional
+		body := config["body"] // Body can be optional
 
-	return &HTTPClientStep{
-		name:     name,
-		url:      url,
-		method:   method,
-		headers:  headers,
-		body:     body,
-		response: response,
-	}, nil
+		return &HTTPClientStep{
+			name:     name,
+			url:      url,
+			method:   method,
+			headers:  headers,
+			body:     body,
+			response: response,
+		}, nil
+	})
 }
