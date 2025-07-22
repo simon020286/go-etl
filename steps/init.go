@@ -11,6 +11,7 @@ func init() {
 	pipeline.RegisterStepType("if", newIfStep)
 	pipeline.RegisterStepType("foreach", newForeachStep)
 	pipeline.RegisterStepType("http client", newHTTPClientStep)
+	pipeline.RegisterStepType("json", newJSONStep)
 	pipeline.RegisterStepType("plugin", newExecPluginStep)
 
 	pipeline.RegisterTriggerType("webhook", newWebhookStep)
