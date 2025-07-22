@@ -17,7 +17,7 @@ func (f *FileStep) Name() string { return f.name }
 func (f *FileStep) Run(ctx context.Context, state *core.PipelineState) (map[string]*core.Data, error) {
 	path, err := f.path.Resolve(state)
 	if err != nil {
-		return nil, core.ErrInterpolate("path", f.path.Raw)
+		return nil, core.ErrInterpolate("path", err)
 	}
 
 	b, err := os.ReadFile(path)
