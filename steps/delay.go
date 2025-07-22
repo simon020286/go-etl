@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"go-etl/core"
+	"go-etl/pipeline"
 	"time"
 )
 
@@ -23,18 +24,20 @@ func (d *DelayStep) Run(ctx context.Context, state *core.PipelineState) (map[str
 	return core.CreateDefaultResultData(nil), nil
 }
 
-func newDelayStep(name string, config map[string]any) (core.Step, error) {
-	ms, ok := config["ms"]
-	if !ok {
-		return nil, errors.New("missing 'ms' in delay step")
-	}
-	rawInputs, _ := config["inputs"].([]any)
-	inputs := make([]string, len(rawInputs))
-	for i, v := range rawInputs {
-		inputs[i], ok = v.(string)
+func init() {
+	pipeline.RegisterStepType("delay", func(name string, config map[string]any) (core.Step, error) {
+		ms, ok := config["ms"]
 		if !ok {
-			return nil, errors.New("invalid input name")
+			return nil, errors.New("missing 'ms' in delay step")
 		}
-	}
-	return &DelayStep{name: name, delay: core.InterpolateValue[int]{Raw: ms}}, nil
+		rawInputs, _ := config["inputs"].([]any)
+		inputs := make([]string, len(rawInputs))
+		for i, v := range rawInputs {
+			inputs[i], ok = v.(string)
+			if !ok {
+				return nil, errors.New("invalid input name")
+			}
+		}
+		return &DelayStep{name: name, delay: core.InterpolateValue[int]{Raw: ms}}, nil
+	})
 }

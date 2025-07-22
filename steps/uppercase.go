@@ -2,8 +2,9 @@ package steps
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"go-etl/core"
+	"go-etl/pipeline"
 	"strings"
 )
 
@@ -23,11 +24,12 @@ func (f *UppercaseStep) Run(ctx context.Context, state *core.PipelineState) (map
 	return core.CreateDefaultResultData(strings.ToUpper(value)), nil
 }
 
-func newUppercaseStep(name string, config map[string]any) (core.Step, error) {
-	value, ok := config["value"]
-	if !ok {
-		return nil, core.ErrMissingConfig("value")
-	}
-
-	return &UppercaseStep{name: name, value: core.InterpolateValue[string]{Raw: fmt.Sprintf("%s", value)}}, nil
+func init() {
+	pipeline.RegisterStepType("file", func(name string, config map[string]any) (core.Step, error) {
+		path, ok := config["path"].(string)
+		if !ok {
+			return nil, errors.New("missing 'path' in file step")
+		}
+		return &FileStep{name: name, path: core.InterpolateValue[string]{Raw: path}}, nil
+	})
 }

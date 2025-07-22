@@ -5,9 +5,9 @@ go 1.23.8
 replace go-etl-sdk => ./plugins/sdk
 
 require (
-	go-etl-sdk v0.0.0
 	github.com/dop251/goja v0.0.0-20250531102226-cb187b08699c
 	github.com/gorilla/websocket v1.5.3
+	go-etl-sdk v0.0.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

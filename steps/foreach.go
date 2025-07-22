@@ -49,37 +49,39 @@ func (f *ForeachStep) Run(ctx context.Context, state *core.PipelineState) (map[s
 	return map[string]*core.Data{"default": {Value: fmt.Sprintf("processed %d items", len(list))}}, nil
 }
 
-func newForeachStep(name string, config map[string]any) (core.Step, error) {
-	stepsCfg, ok := config["steps"].([]any)
-	if !ok {
-		return nil, fmt.Errorf("foreach requires 'steps' array")
-	}
-
-	list, ok := config["list"]
-	if !ok {
-		return nil, fmt.Errorf("foreach requires 'list' to iterate over")
-	}
-
-	var subSteps []pipeline.StepConfig
-
-	for _, raw := range stepsCfg {
-		m, ok := raw.((map[string]any))
+func init() {
+	pipeline.RegisterStepType("foreach", func(name string, config map[string]any) (core.Step, error) {
+		stepsCfg, ok := config["steps"].([]any)
 		if !ok {
-			return nil, fmt.Errorf("invalid substep format")
+			return nil, fmt.Errorf("foreach requires 'steps' array")
 		}
 
-		subStepString, err := yaml.Marshal(m)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal substep config: %v", err)
+		list, ok := config["list"]
+		if !ok {
+			return nil, fmt.Errorf("foreach requires 'list' to iterate over")
 		}
 
-		var subStep pipeline.StepConfig
-		if err := yaml.Unmarshal(subStepString, &subStep); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal substep config: %v", err)
+		var subSteps []pipeline.StepConfig
+
+		for _, raw := range stepsCfg {
+			m, ok := raw.((map[string]any))
+			if !ok {
+				return nil, fmt.Errorf("invalid substep format")
+			}
+
+			subStepString, err := yaml.Marshal(m)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal substep config: %v", err)
+			}
+
+			var subStep pipeline.StepConfig
+			if err := yaml.Unmarshal(subStepString, &subStep); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal substep config: %v", err)
+			}
+
+			subSteps = append(subSteps, subStep)
 		}
 
-		subSteps = append(subSteps, subStep)
-	}
-
-	return &ForeachStep{name: name, list: core.InterpolateValue[[]any]{Raw: list}, subSteps: subSteps}, nil
+		return &ForeachStep{name: name, list: core.InterpolateValue[[]any]{Raw: list}, subSteps: subSteps}, nil
+	})
 }

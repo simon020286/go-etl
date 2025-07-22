@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"go-etl/core"
+	"go-etl/pipeline"
 	"maps"
 	"os"
 	"os/exec"
@@ -65,38 +66,40 @@ func (e *ExecPluginStep) Run(ctx context.Context, state *core.PipelineState) (ma
 
 }
 
-func newExecPluginStep(name string, config map[string]any) (core.Step, error) {
-	commandPath, ok := config["command"].(string)
-	if !ok {
-		return nil, errors.New("missing 'path' in file step")
-	}
-	otherConfig := maps.Clone(config)
-	delete(otherConfig, "command")
+func init() {
+	pipeline.RegisterStepType("plugin", func(name string, config map[string]any) (core.Step, error) {
+		commandPath, ok := config["command"].(string)
+		if !ok {
+			return nil, errors.New("missing 'path' in file step")
+		}
+		otherConfig := maps.Clone(config)
+		delete(otherConfig, "command")
 
-	_, err := os.Stat(commandPath)
+		_, err := os.Stat(commandPath)
 
-	if err != nil {
-		return nil, err
-	}
+		if err != nil {
+			return nil, err
+		}
 
-	commandDir := path.Dir(commandPath)
-	settingsPath := path.Join(commandDir, "plugin.json")
-	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
-		return nil, errors.New("plugin settings file does not exist: " + settingsPath)
-	}
+		commandDir := path.Dir(commandPath)
+		settingsPath := path.Join(commandDir, "plugin.json")
+		if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
+			return nil, errors.New("plugin settings file does not exist: " + settingsPath)
+		}
 
-	configuration, err := sdk.ReadConfiguration(settingsPath)
-	if err != nil {
-		return nil, errors.New("failed to read plugin settings: " + err.Error())
-	}
+		configuration, err := sdk.ReadConfiguration(settingsPath)
+		if err != nil {
+			return nil, errors.New("failed to read plugin settings: " + err.Error())
+		}
 
-	for key, value := range configuration.Inputs {
-		if value.Required {
-			if _, exists := otherConfig[key]; !exists {
-				return nil, errors.New("missing required input: " + key)
+		for key, value := range configuration.Inputs {
+			if value.Required {
+				if _, exists := otherConfig[key]; !exists {
+					return nil, errors.New("missing required input: " + key)
+				}
 			}
 		}
-	}
 
-	return &ExecPluginStep{name: name, command: commandPath, otherConfig: otherConfig, configuration: configuration}, nil
+		return &ExecPluginStep{name: name, command: commandPath, otherConfig: otherConfig, configuration: configuration}, nil
+	})
 }

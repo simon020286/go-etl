@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-etl/core"
+	"go-etl/pipeline"
 )
 
 type JsonStep struct {
@@ -28,14 +29,16 @@ func (s *JsonStep) Run(ctx context.Context, state *core.PipelineState) (map[stri
 	return core.CreateDefaultResultData(jsonData), nil
 }
 
-func newJSONStep(name string, config map[string]any) (core.Step, error) {
-	data, ok := config["data"].(string)
-	if !ok {
-		return nil, core.ErrMissingConfig("data")
-	}
+func init() {
+	pipeline.RegisterStepType("file", func(name string, config map[string]any) (core.Step, error) {
+		data, ok := config["data"].(string)
+		if !ok {
+			return nil, core.ErrMissingConfig("data")
+		}
 
-	return &JsonStep{
-		name: name,
-		data: core.InterpolateValue[string]{Raw: data},
-	}, nil
+		return &JsonStep{
+			name: name,
+			data: core.InterpolateValue[string]{Raw: data},
+		}, nil
+	})
 }
