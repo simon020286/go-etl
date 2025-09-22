@@ -7,6 +7,7 @@ replace go-etl-sdk => ./plugins/sdk
 require (
 	github.com/dop251/goja v0.0.0-20250531102226-cb187b08699c
 	github.com/gorilla/websocket v1.5.3
+	github.com/mattn/go-sqlite3 v1.14.32
 	go-etl-sdk v0.0.0
 	gopkg.in/yaml.v3 v3.0.1
 )
