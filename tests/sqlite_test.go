@@ -2,9 +2,29 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"go-etl/pipeline"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
+
+var testDBPath string
+
+func TestMain(m *testing.M) {
+	// Create temporary database file
+	testDBPath = filepath.Join(os.TempDir(), fmt.Sprintf("test_sqlite_%d.db", time.Now().UnixNano()))
+
+	// Run tests
+	code := m.Run()
+
+	// Cleanup: remove temporary database file
+	os.Remove(testDBPath)
+
+	// Exit with the test result code
+	os.Exit(code)
+}
 
 func TestSql(t *testing.T) {
 	stepFactory, ok := pipeline.GetStepFactory("sqlite")
@@ -13,7 +33,7 @@ func TestSql(t *testing.T) {
 	}
 
 	stepInstance, err := stepFactory("testSqlite1", map[string]any{
-		"connection": "./prova.db",
+		"connection": testDBPath,
 		"query": `CREATE TABLE contacts (
 			contact_id INTEGER PRIMARY KEY,
 			first_name TEXT NOT NULL,
@@ -51,8 +71,8 @@ func TestInsertData(t *testing.T) {
 		t.Errorf("Step type 'sqlite' not registered")
 	}
 
-	stepInstance, err := stepFactory("testSqlite1", map[string]any{
-		"connection": "./prova.db",
+	stepInstance, err := stepFactory("testSqliteInsert", map[string]any{
+		"connection": testDBPath,
 		"query":      `INSERT INTO contacts VALUES (1, 'Name', 'Surname', 'email@email.com', '3654112568');`,
 	})
 
@@ -78,8 +98,8 @@ func TestSelectData(t *testing.T) {
 		t.Errorf("Step type 'sqlite' not registered")
 	}
 
-	stepInstance, err := stepFactory("testSqlite1", map[string]any{
-		"connection": "./prova.db",
+	stepInstance, err := stepFactory("testSqliteSelect", map[string]any{
+		"connection": testDBPath,
 		"query":      `SELECT * FROM contacts;`,
 	})
 
