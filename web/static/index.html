@@ -1,107 +1,184 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8" />
-    <title>ETL Monitor</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go-ETL Pipeline Manager</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .endpoint {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .method {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-weight: bold;
+            font-size: 12px;
+            margin-right: 10px;
+        }
+        .get { background-color: #28a745; color: white; }
+        .post { background-color: #007bff; color: white; }
+        .put { background-color: #ffc107; color: black; }
+        .delete { background-color: #dc3545; color: white; }
+        code {
+            background: #e9ecef;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 5px;
+            color: #155724;
+        }
+        .note {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            color: #856404;
+        }
+    </style>
 </head>
-
 <body>
-    <h1>ETL Pipeline Monitor</h1>
-    <input type="file" id="yamlFile" />
-    <button onclick="upload()">Upload</button>
-    <button onclick="start()">Start</button>
-    <div style="display: flex;">
-        <pre class="mermaid">
-        </pre>
-        <ul id="log">
-        </ul>
+    <div class="container">
+        <h1>🚀 Go-ETL Pipeline Manager API</h1>
+
+        <div class="status">
+            <strong>✅ API Server is running!</strong><br>
+            Base URL: <code>http://localhost:8080/api/v1</code>
+        </div>
+
+        <h2>📋 Available Endpoints</h2>
+
+        <h3>Pipeline Management</h3>
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/api/v1/pipelines</code> - List all pipelines
+            <br><small>Query params: ?offset=0&limit=20&state=RUNNING&enabled=true&order_by=created_at&order_dir=desc</small>
+        </div>
+
+        <div class="endpoint">
+            <span class="method post">POST</span>
+            <code>/api/v1/pipelines</code> - Create new pipeline
+            <br><small>Body: {"name": "string", "description": "string", "config_yaml": "string", "enabled": true}</small>
+        </div>
+
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/api/v1/pipelines/{id}</code> - Get pipeline by ID
+        </div>
+
+        <div class="endpoint">
+            <span class="method put">PUT</span>
+            <code>/api/v1/pipelines/{id}</code> - Update pipeline
+            <br><small>Body: {"name": "string", "description": "string", "config_yaml": "string", "enabled": true}</small>
+        </div>
+
+        <div class="endpoint">
+            <span class="method delete">DELETE</span>
+            <code>/api/v1/pipelines/{id}</code> - Delete pipeline
+        </div>
+
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/api/v1/pipelines/{id}/status</code> - Get pipeline status
+        </div>
+
+        <h3>Pipeline Control (Coming Soon)</h3>
+        <div class="endpoint">
+            <span class="method post">POST</span>
+            <code>/api/v1/pipelines/{id}/start</code> - Start pipeline execution
+        </div>
+
+        <div class="endpoint">
+            <span class="method post">POST</span>
+            <code>/api/v1/pipelines/{id}/stop</code> - Stop pipeline execution
+        </div>
+
+        <h3>Execution Management</h3>
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/api/v1/executions</code> - List executions
+            <br><small>Query params: ?offset=0&limit=20&pipeline_id=1&status=COMPLETED</small>
+        </div>
+
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/api/v1/executions/{id}</code> - Get execution details
+        </div>
+
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/api/v1/executions/{id}/logs</code> - Get execution logs
+        </div>
+
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/api/v1/pipelines/{id}/stats</code> - Get pipeline statistics
+        </div>
+
+        <h3>System</h3>
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/api/v1/health</code> - Health check
+        </div>
+
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/ws</code> - WebSocket endpoint for real-time updates
+        </div>
+
+        <div class="note">
+            <strong>💡 Quick Test:</strong><br>
+            Try: <code>curl http://localhost:8080/api/v1/health</code><br>
+            Or: <code>curl http://localhost:8080/api/v1/pipelines</code>
+        </div>
+
+        <h2>📖 Example Pipeline Configuration</h2>
+        <pre style="background: #f8f9fa; padding: 15px; border-radius: 5px; overflow-x: auto;">
+steps:
+  - name: hello_world
+    type: stdout
+    config:
+      value: "Hello, World!"
+
+  - name: data_transform
+    type: map
+    inputs:
+      - hello_world
+    config:
+      fields:
+        - name: message
+          value: "ctx.hello_world.default"
+        - name: timestamp
+          value: "2024-01-01T00:00:00Z"</pre>
     </div>
-    <script type="module">
-        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-
-        let pipeline = null;
-
-        mermaid.initialize({
-            startOnLoad: false,
-            theme: 'base',
-            flowchart: {
-                useMaxWidth: false,
-                htmlLabels: true
-            }
-        });
-
-        window.renderGraph = (yamlContent) => {
-            const graphDefinition = `graph TD\n${yamlContent}`;
-            const graphElement = document.querySelector('.mermaid');
-            graphElement.textContent = graphDefinition;
-            delete(graphElement.dataset.processed);
-            mermaid.run();
-        };
-
-        const log = document.getElementById("log");
-        const socket = new WebSocket("ws://" + location.host + "/ws");
-        socket.onmessage = event => {
-            const data = JSON.parse(event.data);
-            const paths = data.path.split("/");
-            if (paths.length > 2 && paths[0] === "step") {
-                const [path, op, step] = paths;
-                if (op === 'end' && step === 'print') {
-                    debugger;
-                }
-                
-                pipeline.Steps.forEach(item => {
-                    if (item.Name === step) {
-                        item.Status = op;
-                    }
-                });
-                
-                renderGraph(parsePipeline(pipeline));
-            }
-            
-            const li = document.createElement("li");
-            li.innerHTML = event.data;
-            log.appendChild(li);
-        };
-
-        window.upload = async () => {
-            const fileInput = document.getElementById("yamlFile");
-            const file = fileInput.files[0];
-            const formData = new FormData();
-            formData.append("file", file);
-
-            const res = await fetch("/upload", { method: "POST", body: formData });
-            const data = await res.json();
-            pipeline = data;
-            const content = parsePipeline(pipeline);
-
-            renderGraph(content);
-        }
-
-        window.start = async () => {
-            const fileInput = document.getElementById("yamlFile");
-            const file = fileInput.files[0];
-            const formData = new FormData();
-            formData.append("file", file);
-
-            const res = await fetch("/start", { method: "POST", body: formData });
-            const data = await res.json();
-        }
-
-        function parsePipeline(pipeline) {
-            let content = '';
-            for (const item of pipeline.Steps) {
-                if (!item.Inputs) {
-                    content += `${item.Name}["${item.Name} ${item.Status ?? 'not started'}"]\n`;
-                    continue;
-                }
-                for (const input of item.Inputs) {
-                    content += `${input}-->${item.Name}["${item.Name} (${item.Type}) ${item.Status ?? 'not started'}"]\n`;
-                }
-            }
-            return content;
-        }
-    </script>
 </body>
-
 </html>

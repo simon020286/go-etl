@@ -41,16 +41,35 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 }
 
 func StartServer(logger *slog.Logger) {
-	server := core.GetWebServer()
-	server.Mux().HandleFunc("/ws", handleConnections)
-	server.Mux().HandleFunc("/start", handleStart(logger))
-	server.Mux().HandleFunc("/upload", handleUpload(logger))
-	server.Mux().Handle("/", http.FileServer(http.Dir("./web/static")))
+	// Create new API server
+	apiServer, err := NewAPIServer(logger)
+	if err != nil {
+		logger.Error("Failed to create API server", "error", err)
+		return
+	}
+
+	// Use the API server's router directly instead of the core web server
+	router := apiServer.GetRouter()
+
+	// Add legacy endpoints to the same router
+	router.HandleFunc("/legacy/ws", handleConnections)
+	router.HandleFunc("/legacy/start", handleStart(logger))
+	router.HandleFunc("/legacy/upload", handleUpload(logger))
+
+	// Static files
+	router.PathPrefix("/").Handler(http.FileServer(http.Dir("./web/static/")))
 
 	go startWebSocket()
 
 	fmt.Println("Starting server on :8080")
-	server.Start()
+	fmt.Println("API endpoints available at: http://localhost:8080/api/v1/")
+	fmt.Println("WebSocket endpoint: ws://localhost:8080/ws")
+	fmt.Println("Health check: http://localhost:8080/api/v1/health")
+
+	// Start server directly with our router
+	if err := http.ListenAndServe(":8080", router); err != nil {
+		logger.Error("Failed to start server", "error", err)
+	}
 }
 
 func startWebSocket() {
@@ -68,7 +87,7 @@ func logToClients(path string, msg string) {
 	broadcast <- message
 }
 
-func handleUpload(logger *slog.Logger) http.HandlerFunc {
+func handleUpload(_ *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		file, _, err := r.FormFile("file")
 		if err != nil {

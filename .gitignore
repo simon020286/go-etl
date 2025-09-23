@@ -1,5 +1,12 @@
-# Database file
+# Database files
 db/data
+data/
+*.db
+*.sqlite
+*.sqlite3
 
 # Binaries
 etl
+
+# Logs
+*.log
