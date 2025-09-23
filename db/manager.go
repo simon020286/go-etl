@@ -7,9 +7,11 @@ import (
 
 // Manager provides centralized access to all database managers
 type Manager struct {
-	db              *sql.DB
-	pipelineManager *PipelineManager
-	mu              sync.RWMutex
+	db                    *sql.DB
+	pipelineManager       *PipelineManager
+	pipelineStateManager  *PipelineStateManager
+	executionManager      *ExecutionManager
+	mu                    sync.RWMutex
 }
 
 var (
@@ -58,6 +60,46 @@ func (m *Manager) Pipelines() *PipelineManager {
 	}
 
 	return m.pipelineManager
+}
+
+// PipelineState returns the pipeline state manager
+func (m *Manager) PipelineState() *PipelineStateManager {
+	m.mu.RLock()
+	if m.pipelineStateManager != nil {
+		defer m.mu.RUnlock()
+		return m.pipelineStateManager
+	}
+	m.mu.RUnlock()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if m.pipelineStateManager == nil {
+		m.pipelineStateManager = NewPipelineStateManager(m.db, m.Pipelines())
+	}
+
+	return m.pipelineStateManager
+}
+
+// Executions returns the execution manager
+func (m *Manager) Executions() *ExecutionManager {
+	m.mu.RLock()
+	if m.executionManager != nil {
+		defer m.mu.RUnlock()
+		return m.executionManager
+	}
+	m.mu.RUnlock()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if m.executionManager == nil {
+		m.executionManager = NewExecutionManager(m.db)
+	}
+
+	return m.executionManager
 }
 
 // DB returns the underlying database connection

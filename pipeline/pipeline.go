@@ -37,6 +37,16 @@ func LoadPipelineFromFile(filePath string) (*Pipeline, error) {
 	return LoadPipeline(config)
 }
 
+func LoadPipelineFromYAML(yamlContent string) (*Pipeline, error) {
+	var config PipelineConfig
+	err := yaml.Unmarshal([]byte(yamlContent), &config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode pipeline config: %w", err)
+	}
+
+	return LoadPipeline(config)
+}
+
 func LoadPipeline(config PipelineConfig) (*Pipeline, error) {
 	stepsMap := make(map[string]core.Step)
 	triggersMap := make(map[string]core.Trigger)
