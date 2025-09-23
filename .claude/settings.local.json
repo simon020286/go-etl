@@ -6,7 +6,10 @@
       "Bash(go build:*)",
       "Bash(go test:*)",
       "Bash(go get:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(./etl:*)"
     ],
     "deny": [],
     "ask": []

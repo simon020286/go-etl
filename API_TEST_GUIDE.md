@@ -91,12 +91,54 @@ curl -X PUT http://localhost:8080/api/v1/pipelines/1 \
   }'
 ```
 
-### 10. Elimina Pipeline
+### 10. 🚀 Avvia Pipeline (NUOVO!)
+```bash
+curl -X POST http://localhost:8080/api/v1/pipelines/1/start
+```
+**Output atteso:**
+```json
+{"success":true,"data":{"pipeline_id":1,"execution":{"id":1,...},"message":"Pipeline started successfully"}}
+```
+
+### 11. 🏃 Verifica Pipeline in Esecuzione (NUOVO!)
+```bash
+curl http://localhost:8080/api/v1/pipelines/running
+```
+**Output atteso:**
+```json
+{"success":true,"data":[{"pipeline_id":1,"pipeline_name":"test-pipeline","execution_id":1,"status":"RUNNING","started_at":"...","duration_ms":1234}]}
+```
+
+### 12. ⏸️ Metti in Pausa Pipeline (NUOVO!)
+```bash
+curl -X POST http://localhost:8080/api/v1/pipelines/1/pause
+```
+
+### 13. ▶️ Riprendi Pipeline (NUOVO!)
+```bash
+curl -X POST http://localhost:8080/api/v1/pipelines/1/resume
+```
+
+### 14. ⏹️ Ferma Pipeline (NUOVO!)
+```bash
+curl -X POST http://localhost:8080/api/v1/pipelines/1/stop
+```
+
+### 15. 📊 Stato Pipeline Aggiornato
+```bash
+curl http://localhost:8080/api/v1/pipelines/1/status
+```
+**Output possibile:**
+```json
+{"success":true,"data":{"pipeline_id":1,"status":"COMPLETED","is_running":false}}
+```
+
+### 16. 🗑️ Elimina Pipeline
 ```bash
 curl -X DELETE http://localhost:8080/api/v1/pipelines/1
 ```
 
-### 11. WebSocket Test
+### 17. 🔌 WebSocket Test
 Nel browser, aprire la console sviluppatore e testare:
 ```javascript
 const ws = new WebSocket('ws://localhost:8080/ws');

@@ -72,14 +72,15 @@ func NewAPIServer(logger *slog.Logger) (*APIServer, error) {
 func (s *APIServer) setupRoutes() {
 	api := s.router.PathPrefix("/api/v1").Subrouter()
 
-	// Pipeline CRUD routes
+	// Pipeline CRUD routes - specific routes FIRST, then parameterized routes
 	api.HandleFunc("/pipelines", s.handleListPipelines).Methods("GET")
 	api.HandleFunc("/pipelines", s.handleCreatePipeline).Methods("POST")
+	api.HandleFunc("/pipelines/running", s.handleGetRunningPipelines).Methods("GET") // MOVED UP
 	api.HandleFunc("/pipelines/{id}", s.handleGetPipeline).Methods("GET")
 	api.HandleFunc("/pipelines/{id}", s.handleUpdatePipeline).Methods("PUT")
 	api.HandleFunc("/pipelines/{id}", s.handleDeletePipeline).Methods("DELETE")
 
-	// Pipeline control routes (will be implemented in next step)
+	// Pipeline control routes
 	api.HandleFunc("/pipelines/{id}/start", s.handleStartPipeline).Methods("POST")
 	api.HandleFunc("/pipelines/{id}/stop", s.handleStopPipeline).Methods("POST")
 	api.HandleFunc("/pipelines/{id}/pause", s.handlePausePipeline).Methods("POST")

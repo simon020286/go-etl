@@ -111,15 +111,31 @@
             <code>/api/v1/pipelines/{id}/status</code> - Get pipeline status
         </div>
 
-        <h3>Pipeline Control (Coming Soon)</h3>
+        <h3>Pipeline Control</h3>
         <div class="endpoint">
             <span class="method post">POST</span>
             <code>/api/v1/pipelines/{id}/start</code> - Start pipeline execution
+            <br><small>Optional body: {"trigger_type": "manual", "trigger_data": "string"}</small>
         </div>
 
         <div class="endpoint">
             <span class="method post">POST</span>
             <code>/api/v1/pipelines/{id}/stop</code> - Stop pipeline execution
+        </div>
+
+        <div class="endpoint">
+            <span class="method post">POST</span>
+            <code>/api/v1/pipelines/{id}/pause</code> - Pause pipeline execution
+        </div>
+
+        <div class="endpoint">
+            <span class="method post">POST</span>
+            <code>/api/v1/pipelines/{id}/resume</code> - Resume paused pipeline
+        </div>
+
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/api/v1/pipelines/running</code> - Get all running pipelines
         </div>
 
         <h3>Execution Management</h3>

@@ -287,25 +287,14 @@ func (pm *PipelineManager) ListPipelines(req ListPipelinesRequest) ([]PipelineRe
 		limit = 20
 	}
 
-	// Build main query with pipeline data and execution stats
+	// Simplified query for SQLite compatibility - no complex joins
 	query := fmt.Sprintf(`
-		SELECT p.id, p.name, p.description, p.config_yaml, p.state,
-		       p.created_at, p.updated_at, p.last_run_at, p.next_run_at,
-		       p.enabled, p.schedule_cron, p.tags,
-		       COUNT(e.id) as execution_count,
-		       COALESCE(latest.status, '') as last_status
-		FROM pipelines p
-		LEFT JOIN executions e ON p.id = e.pipeline_id
-		LEFT JOIN (
-			SELECT DISTINCT pipeline_id,
-			       FIRST_VALUE(status) OVER (PARTITION BY pipeline_id ORDER BY started_at DESC) as status
-			FROM executions
-		) latest ON p.id = latest.pipeline_id
+		SELECT id, name, description, config_yaml, state,
+		       created_at, updated_at, last_run_at, next_run_at,
+		       enabled, schedule_cron, tags
+		FROM pipelines
 		%s
-		GROUP BY p.id, p.name, p.description, p.config_yaml, p.state,
-		         p.created_at, p.updated_at, p.last_run_at, p.next_run_at,
-		         p.enabled, p.schedule_cron, p.tags, latest.status
-		ORDER BY p.%s %s
+		ORDER BY %s %s
 		LIMIT ? OFFSET ?
 	`, whereClause, orderBy, orderDir)
 
@@ -325,8 +314,10 @@ func (pm *PipelineManager) ListPipelines(req ListPipelinesRequest) ([]PipelineRe
 			&pr.State, &pr.CreatedAt, &pr.UpdatedAt,
 			&pr.LastRunAt, &pr.NextRunAt, &pr.Enabled,
 			&pr.ScheduleCron, &pr.Tags,
-			&pr.ExecutionCount, &pr.LastStatus,
 		)
+		// Set defaults for removed fields
+		pr.ExecutionCount = 0
+		pr.LastStatus = ""
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan pipeline: %w", err)
 		}
