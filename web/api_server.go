@@ -75,10 +75,12 @@ func (s *APIServer) setupRoutes() {
 	// Pipeline CRUD routes - specific routes FIRST, then parameterized routes
 	api.HandleFunc("/pipelines", s.handleListPipelines).Methods("GET")
 	api.HandleFunc("/pipelines", s.handleCreatePipeline).Methods("POST")
+	api.HandleFunc("/pipelines/upload", s.handleUploadPipeline).Methods("POST")
 	api.HandleFunc("/pipelines/running", s.handleGetRunningPipelines).Methods("GET") // MOVED UP
 	api.HandleFunc("/pipelines/{id}", s.handleGetPipeline).Methods("GET")
 	api.HandleFunc("/pipelines/{id}", s.handleUpdatePipeline).Methods("PUT")
 	api.HandleFunc("/pipelines/{id}", s.handleDeletePipeline).Methods("DELETE")
+	api.HandleFunc("/pipelines/{id}/download", s.handleDownloadPipeline).Methods("GET")
 
 	// Pipeline control routes
 	api.HandleFunc("/pipelines/{id}/start", s.handleStartPipeline).Methods("POST")

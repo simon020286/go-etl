@@ -9,7 +9,8 @@
       "Bash(timeout:*)",
       "Bash(curl:*)",
       "Bash(pkill:*)",
-      "Bash(./etl:*)"
+      "Bash(./etl:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

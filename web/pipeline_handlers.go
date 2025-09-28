@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"go-etl/db"
 	"net/http"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // handleListPipelines handles GET /api/v1/pipelines
@@ -514,4 +518,183 @@ func (s *APIServer) handleGetRunningPipelines(w http.ResponseWriter, r *http.Req
 	}
 
 	s.sendSuccess(w, result)
+}
+
+// handleUploadPipeline handles POST /api/v1/pipelines/upload
+func (s *APIServer) handleUploadPipeline(w http.ResponseWriter, r *http.Request) {
+	// Parse multipart form
+	err := r.ParseMultipartForm(10 << 20) // 10 MB max
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "Failed to parse multipart form")
+		return
+	}
+
+	// Get file from form
+	file, fileHeader, err := r.FormFile("file")
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "No file provided")
+		return
+	}
+	defer file.Close()
+
+	// Validate file extension
+	filename := fileHeader.Filename
+	if !strings.HasSuffix(filename, ".yml") && !strings.HasSuffix(filename, ".yaml") && !strings.HasSuffix(filename, ".json") {
+		s.sendError(w, http.StatusBadRequest, "File must be YAML (.yml, .yaml) or JSON (.json)")
+		return
+	}
+
+	// Read file content
+	content := make([]byte, fileHeader.Size)
+	_, err = file.Read(content)
+	if err != nil {
+		s.sendError(w, http.StatusInternalServerError, "Failed to read file content")
+		return
+	}
+
+	// Get optional form fields
+	name := r.FormValue("name")
+	description := r.FormValue("description")
+	enabledStr := r.FormValue("enabled")
+
+	// If name not provided, use filename without extension
+	if name == "" {
+		name = strings.TrimSuffix(filename, filepath.Ext(filename))
+	}
+
+	// Parse enabled flag
+	enabled := true
+	if enabledStr != "" {
+		enabled, _ = strconv.ParseBool(enabledStr)
+	}
+
+	// Validate YAML/JSON content
+	configYAML := string(content)
+	if strings.HasSuffix(filename, ".json") {
+		// Convert JSON to YAML for storage
+		var jsonData interface{}
+		if err := json.Unmarshal(content, &jsonData); err != nil {
+			s.sendError(w, http.StatusBadRequest, "Invalid JSON format: "+err.Error())
+			return
+		}
+
+		yamlBytes, err := yaml.Marshal(jsonData)
+		if err != nil {
+			s.sendError(w, http.StatusInternalServerError, "Failed to convert JSON to YAML")
+			return
+		}
+		configYAML = string(yamlBytes)
+	} else {
+		// Validate YAML
+		var yamlData interface{}
+		if err := yaml.Unmarshal(content, &yamlData); err != nil {
+			s.sendError(w, http.StatusBadRequest, "Invalid YAML format: "+err.Error())
+			return
+		}
+	}
+
+	// Create pipeline request
+	req := db.CreatePipelineRequest{
+		Name:        name,
+		Description: description,
+		ConfigYAML:  configYAML,
+		Enabled:     &enabled,
+	}
+
+	// Create pipeline
+	pipeline, err := s.manager.Pipelines().CreatePipeline(req)
+	if err != nil {
+		s.logger.Error("Failed to create pipeline from upload", "error", err, "name", name)
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			s.sendError(w, http.StatusConflict, "Pipeline with this name already exists")
+		} else if strings.Contains(err.Error(), "invalid") {
+			s.sendError(w, http.StatusBadRequest, err.Error())
+		} else {
+			s.sendError(w, http.StatusInternalServerError, "Failed to create pipeline")
+		}
+		return
+	}
+
+	s.logger.Info("Pipeline created from upload", "id", pipeline.ID, "name", pipeline.Name, "filename", filename)
+
+	// Broadcast event
+	s.BroadcastMessage("pipeline_uploaded", map[string]interface{}{
+		"pipeline": pipeline,
+		"filename": filename,
+	})
+
+	s.sendSuccess(w, pipeline, "Pipeline uploaded and created successfully")
+}
+
+// handleDownloadPipeline handles GET /api/v1/pipelines/{id}/download
+func (s *APIServer) handleDownloadPipeline(w http.ResponseWriter, r *http.Request) {
+	id, err := s.extractID(r)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Get pipeline
+	pipeline, err := s.manager.Pipelines().GetPipeline(id)
+	if err != nil {
+		s.logger.Error("Failed to get pipeline for download", "error", err, "id", id)
+		if strings.Contains(err.Error(), "not found") {
+			s.sendError(w, http.StatusNotFound, "Pipeline not found")
+		} else {
+			s.sendError(w, http.StatusInternalServerError, "Failed to retrieve pipeline")
+		}
+		return
+	}
+
+	// Get format from query parameter (default: yaml)
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "yaml"
+	}
+
+	var content []byte
+	var filename string
+	var contentType string
+
+	switch format {
+	case "json":
+		// Convert YAML to JSON
+		var yamlData interface{}
+		if err := yaml.Unmarshal([]byte(pipeline.ConfigYAML), &yamlData); err != nil {
+			s.sendError(w, http.StatusInternalServerError, "Failed to parse pipeline configuration")
+			return
+		}
+
+		content, err = json.MarshalIndent(yamlData, "", "  ")
+		if err != nil {
+			s.sendError(w, http.StatusInternalServerError, "Failed to convert to JSON")
+			return
+		}
+
+		filename = fmt.Sprintf("%s.json", pipeline.Name)
+		contentType = "application/json"
+
+	case "yaml", "yml":
+		content = []byte(pipeline.ConfigYAML)
+		filename = fmt.Sprintf("%s.yml", pipeline.Name)
+		contentType = "application/x-yaml"
+
+	default:
+		s.sendError(w, http.StatusBadRequest, "Invalid format. Supported: yaml, yml, json")
+		return
+	}
+
+	// Set headers for file download
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
+
+	// Write content
+	_, err = w.Write(content)
+	if err != nil {
+		s.logger.Error("Failed to write download content", "error", err, "id", id)
+		return
+	}
+
+	s.logger.Info("Pipeline downloaded", "id", id, "name", pipeline.Name, "format", format)
 }
