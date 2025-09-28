@@ -56,6 +56,11 @@ func StartServer(logger *slog.Logger) {
 	router.HandleFunc("/legacy/start", handleStart(logger))
 	router.HandleFunc("/legacy/upload", handleUpload(logger))
 
+	// Dashboard root endpoint
+	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/dashboard.html", http.StatusFound)
+	})
+
 	// Static files
 	router.PathPrefix("/").Handler(http.FileServer(http.Dir("./web/static/")))
 

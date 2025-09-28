@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pipeline Dashboard - Go-ETL</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f8f9fa;
+        }
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            margin-bottom: 2rem;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .stat-label {
+            color: #6c757d;
+            margin-top: 0.5rem;
+        }
+        .controls {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 0.5rem;
+            font-size: 0.9rem;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn-success {
+            background: #28a745;
+        }
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+        .btn-danger {
+            background: #dc3545;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+        .pipeline-list {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .pipeline-item {
+            padding: 1rem;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pipeline-item:last-child {
+            border-bottom: none;
+        }
+        .pipeline-info h3 {
+            margin: 0 0 0.5rem 0;
+            color: #2c3e50;
+        }
+        .pipeline-info p {
+            margin: 0;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .pipeline-status {
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status-created {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        .status-running {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+        .status-completed {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+        .status-error {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .status-paused {
+            background: #fff3e0;
+            color: #ef6c00;
+        }
+        .pipeline-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #6c757d;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 1rem;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+        .running-indicator {
+            width: 8px;
+            height: 8px;
+            background: #28a745;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 0.5rem;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .execution-history {
+            background: white;
+            margin-top: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .execution-history h2 {
+            margin: 0;
+            padding: 1.5rem 1.5rem 0;
+            color: #2c3e50;
+        }
+        .execution-item {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .execution-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1>🚀 Pipeline Dashboard</h1>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Statistics Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number" id="totalPipelines">-</div>
+                <div class="stat-label">Total Pipelines</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="runningPipelines">-</div>
+                <div class="stat-label">Running</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="completedExecutions">-</div>
+                <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalExecutions">-</div>
+                <div class="stat-label">Total Executions</div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <button class="btn" onclick="refreshDashboard()">🔄 Refresh</button>
+            <button class="btn btn-success" onclick="showCreatePipeline()">➕ Create Pipeline</button>
+            <span style="margin-left: 1rem; color: #6c757d;">
+                Auto-refresh: <span id="autoRefreshStatus">ON</span>
+            </span>
+        </div>
+
+        <!-- Messages -->
+        <div id="messages"></div>
+
+        <!-- Pipeline List -->
+        <div class="pipeline-list">
+            <div id="pipelinesList">
+                <div class="loading">Loading pipelines...</div>
+            </div>
+        </div>
+
+        <!-- Execution History -->
+        <div class="execution-history">
+            <h2>Recent Executions</h2>
+            <div id="executionsList">
+                <div class="loading">Loading executions...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let autoRefreshInterval;
+        let ws;
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeWebSocket();
+            refreshDashboard();
+            startAutoRefresh();
+        });
+
+        // WebSocket connection for real-time updates
+        function initializeWebSocket() {
+            const wsUrl = `ws://${window.location.host}/ws`;
+            ws = new WebSocket(wsUrl);
+
+            ws.onmessage = function(event) {
+                console.log('WebSocket message:', event.data);
+                // Refresh dashboard when pipeline events occur
+                setTimeout(refreshDashboard, 500);
+            };
+
+            ws.onclose = function() {
+                console.log('WebSocket connection closed, attempting to reconnect...');
+                setTimeout(initializeWebSocket, 5000);
+            };
+        }
+
+        // Auto-refresh functionality
+        function startAutoRefresh() {
+            autoRefreshInterval = setInterval(refreshDashboard, 5000);
+            document.getElementById('autoRefreshStatus').textContent = 'ON';
+        }
+
+        function stopAutoRefresh() {
+            clearInterval(autoRefreshInterval);
+            document.getElementById('autoRefreshStatus').textContent = 'OFF';
+        }
+
+        // Main refresh function
+        async function refreshDashboard() {
+            try {
+                await Promise.all([
+                    loadPipelines(),
+                    loadExecutions(),
+                    updateStatistics()
+                ]);
+            } catch (error) {
+                showMessage('Failed to refresh dashboard: ' + error.message, 'error');
+            }
+        }
+
+        // Load pipelines
+        async function loadPipelines() {
+            try {
+                const response = await fetch('/api/v1/pipelines');
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error);
+                }
+
+                displayPipelines(data.data);
+            } catch (error) {
+                document.getElementById('pipelinesList').innerHTML =
+                    `<div class="error">Failed to load pipelines: ${error.message}</div>`;
+            }
+        }
+
+        // Display pipelines
+        function displayPipelines(pipelines) {
+            const container = document.getElementById('pipelinesList');
+
+            if (!pipelines || pipelines.length === 0) {
+                container.innerHTML = '<div class="loading">No pipelines found</div>';
+                return;
+            }
+
+            container.innerHTML = pipelines.map(pipeline => `
+                <div class="pipeline-item">
+                    <div class="pipeline-info">
+                        <h3>
+                            ${pipeline.state === 'RUNNING' ? '<span class="running-indicator"></span>' : ''}
+                            ${pipeline.name}
+                        </h3>
+                        <p>${pipeline.description || 'No description'}</p>
+                        <p>
+                            <span class="pipeline-status status-${pipeline.state.toLowerCase()}">${pipeline.state}</span>
+                            ${pipeline.enabled ? '' : ' <span style="color: #dc3545;">(Disabled)</span>'}
+                            • Updated: ${new Date(pipeline.updated_at).toLocaleString()}
+                        </p>
+                    </div>
+                    <div class="pipeline-actions">
+                        ${getPipelineActions(pipeline)}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Get pipeline action buttons
+        function getPipelineActions(pipeline) {
+            let actions = [];
+
+            if (pipeline.state === 'RUNNING') {
+                actions.push(`<button class="btn btn-warning" onclick="pausePipeline(${pipeline.id})">⏸️ Pause</button>`);
+                actions.push(`<button class="btn btn-danger" onclick="stopPipeline(${pipeline.id})">⏹️ Stop</button>`);
+            } else if (pipeline.state === 'PAUSED') {
+                actions.push(`<button class="btn btn-success" onclick="resumePipeline(${pipeline.id})">▶️ Resume</button>`);
+                actions.push(`<button class="btn btn-danger" onclick="stopPipeline(${pipeline.id})">⏹️ Stop</button>`);
+            } else if (pipeline.enabled) {
+                actions.push(`<button class="btn btn-success" onclick="startPipeline(${pipeline.id})">▶️ Start</button>`);
+            }
+
+            actions.push(`<button class="btn" onclick="viewPipeline(${pipeline.id})">👁️ View</button>`);
+
+            return actions.join('');
+        }
+
+        // Load executions
+        async function loadExecutions() {
+            try {
+                const response = await fetch('/api/v1/executions?limit=10');
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error);
+                }
+
+                displayExecutions(data.data);
+            } catch (error) {
+                document.getElementById('executionsList').innerHTML =
+                    `<div class="error">Failed to load executions: ${error.message}</div>`;
+            }
+        }
+
+        // Display executions
+        function displayExecutions(executions) {
+            const container = document.getElementById('executionsList');
+
+            if (!executions || executions.length === 0) {
+                container.innerHTML = '<div class="loading">No executions found</div>';
+                return;
+            }
+
+            container.innerHTML = executions.map(execution => `
+                <div class="execution-item">
+                    <div>
+                        <strong>Execution #${execution.id}</strong> - Pipeline ${execution.pipeline_id}
+                        <br>
+                        <small>
+                            Started: ${new Date(execution.started_at).toLocaleString()}
+                            ${execution.completed_at ? ` • Duration: ${execution.duration_ms}ms` : ''}
+                        </small>
+                    </div>
+                    <div>
+                        <span class="pipeline-status status-${execution.status.toLowerCase()}">${execution.status}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Update statistics
+        async function updateStatistics() {
+            try {
+                const [pipelinesResp, executionsResp, runningResp] = await Promise.all([
+                    fetch('/api/v1/pipelines'),
+                    fetch('/api/v1/executions'),
+                    fetch('/api/v1/pipelines/running')
+                ]);
+
+                const pipelines = await pipelinesResp.json();
+                const executions = await executionsResp.json();
+                const running = await runningResp.json();
+
+                document.getElementById('totalPipelines').textContent = pipelines.success ? pipelines.data.length : '0';
+                document.getElementById('runningPipelines').textContent = running.success ? (running.data ? running.data.length : 0) : '0';
+                document.getElementById('totalExecutions').textContent = executions.success ? executions.data.length : '0';
+
+                const completed = executions.success ?
+                    executions.data.filter(e => e.status === 'COMPLETED').length : 0;
+                document.getElementById('completedExecutions').textContent = completed;
+
+            } catch (error) {
+                console.error('Failed to update statistics:', error);
+            }
+        }
+
+        // Pipeline control functions
+        async function startPipeline(id) {
+            try {
+                const response = await fetch(`/api/v1/pipelines/${id}/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ trigger_type: 'manual' })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage(`Pipeline ${id} started successfully`, 'success');
+                    setTimeout(refreshDashboard, 1000);
+                } else {
+                    showMessage(`Failed to start pipeline: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`Error starting pipeline: ${error.message}`, 'error');
+            }
+        }
+
+        async function stopPipeline(id) {
+            try {
+                const response = await fetch(`/api/v1/pipelines/${id}/stop`, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage(`Pipeline ${id} stopped successfully`, 'success');
+                    setTimeout(refreshDashboard, 1000);
+                } else {
+                    showMessage(`Failed to stop pipeline: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`Error stopping pipeline: ${error.message}`, 'error');
+            }
+        }
+
+        async function pausePipeline(id) {
+            try {
+                const response = await fetch(`/api/v1/pipelines/${id}/pause`, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage(`Pipeline ${id} paused successfully`, 'success');
+                    setTimeout(refreshDashboard, 1000);
+                } else {
+                    showMessage(`Failed to pause pipeline: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`Error pausing pipeline: ${error.message}`, 'error');
+            }
+        }
+
+        async function resumePipeline(id) {
+            try {
+                const response = await fetch(`/api/v1/pipelines/${id}/resume`, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage(`Pipeline ${id} resumed successfully`, 'success');
+                    setTimeout(refreshDashboard, 1000);
+                } else {
+                    showMessage(`Failed to resume pipeline: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`Error resuming pipeline: ${error.message}`, 'error');
+            }
+        }
+
+        function viewPipeline(id) {
+            window.open(`/api/v1/pipelines/${id}`, '_blank');
+        }
+
+        function showCreatePipeline() {
+            alert('Pipeline creation form would open here.\nFor now, use the API directly:\n\nPOST /api/v1/pipelines\n{"name": "My Pipeline", "description": "Description", "config_yaml": "..."}');
+        }
+
+        // Utility functions
+        function showMessage(message, type) {
+            const container = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = message;
+            container.appendChild(div);
+
+            setTimeout(() => {
+                container.removeChild(div);
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
