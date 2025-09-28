@@ -64,16 +64,21 @@ func (m *Manager) Pipelines() *PipelineManager {
 
 // PipelineState returns the pipeline state manager
 func (m *Manager) PipelineState() *PipelineStateManager {
-	// SIMPLIFIED - no locks to avoid deadlock for API testing
-	if m.pipelineStateManager == nil {
-		// Create without dependencies to avoid circular deadlock
-		m.pipelineStateManager = &PipelineStateManager{
-			db:               m.db,
-			pipelineManager:  nil, // Will be set later if needed
-			runningPipelines: make(map[int]*RunningPipeline),
-			eventListeners:   make([]StateEventListener, 0),
-		}
+	// Use atomic check without locks first
+	if m.pipelineStateManager != nil {
+		return m.pipelineStateManager
 	}
+
+	// Only lock for initialization
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Double-check after acquiring lock
+	if m.pipelineStateManager == nil {
+		// Create with proper initialization but avoid circular dependency
+		m.pipelineStateManager = NewPipelineStateManager(m.db, m.pipelineManager)
+	}
+
 	return m.pipelineStateManager
 }
 

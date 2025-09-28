@@ -90,20 +90,24 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 	fmt.Printf("[DEBUG] StartPipeline: Starting pipeline %d with trigger %s\n", pipelineID, triggerType)
 
 	// Check if pipeline is already running
-	fmt.Printf("[DEBUG] StartPipeline: MOCK check if pipeline is already running - bypass mutex\n")
-	// MOCK check - bypass mutex to avoid deadlock for API testing
-	// TODO: Restore proper mutex checking when DB issues are fixed
-	fmt.Printf("[DEBUG] StartPipeline: Mock pipeline not running, continuing\n")
-
-	// MOCK pipeline record - bypass database to avoid deadlock
-	fmt.Printf("[DEBUG] StartPipeline: Creating MOCK pipeline record to bypass database\n")
-	pipelineRecord := &Pipeline{
-		ID:      pipelineID,
-		Name:    fmt.Sprintf("mock-pipeline-%d", pipelineID),
-		Enabled: true,
-		State:   StateCreated,
+	fmt.Printf("[DEBUG] StartPipeline: Checking if pipeline is already running\n")
+	psm.mu.RLock()
+	if _, isRunning := psm.runningPipelines[pipelineID]; isRunning {
+		psm.mu.RUnlock()
+		fmt.Printf("[DEBUG] StartPipeline: Pipeline is already running, returning error\n")
+		return nil, fmt.Errorf("pipeline %d is already running", pipelineID)
 	}
-	fmt.Printf("[DEBUG] StartPipeline: Created mock pipeline record: %s\n", pipelineRecord.Name)
+	psm.mu.RUnlock()
+	fmt.Printf("[DEBUG] StartPipeline: Pipeline not running, continuing\n")
+
+	// Get pipeline from database
+	fmt.Printf("[DEBUG] StartPipeline: Getting pipeline from database\n")
+	pipelineRecord, err := psm.pipelineManager.GetPipeline(pipelineID)
+	if err != nil {
+		fmt.Printf("[DEBUG] StartPipeline: Failed to get pipeline: %v\n", err)
+		return nil, fmt.Errorf("failed to get pipeline: %w", err)
+	}
+	fmt.Printf("[DEBUG] StartPipeline: Got pipeline record: %s\n", pipelineRecord.Name)
 
 	fmt.Printf("[DEBUG] StartPipeline: Checking if pipeline is enabled\n")
 	if !pipelineRecord.Enabled {
@@ -126,11 +130,17 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 	}
 	fmt.Printf("[DEBUG] StartPipeline: Created execution with ID %d\n", execution.ID)
 
-	// MOCK pipeline state update - bypass database to avoid deadlock
-	fmt.Printf("[DEBUG] StartPipeline: MOCK updating pipeline state to RUNNING\n")
+	// Update pipeline state to RUNNING
+	fmt.Printf("[DEBUG] StartPipeline: Updating pipeline state to RUNNING\n")
 	oldState := pipelineRecord.State
-	// Skip actual database update for API testing
-	fmt.Printf("[DEBUG] StartPipeline: Mock pipeline state updated successfully\n")
+	err = psm.pipelineManager.UpdatePipelineState(pipelineID, StateRunning)
+	if err != nil {
+		fmt.Printf("[DEBUG] StartPipeline: Failed to update pipeline state: %v\n", err)
+		// Clean up execution record
+		psm.updateExecution(execution.ID, StateError, nil, err.Error())
+		return nil, fmt.Errorf("failed to update pipeline state: %w", err)
+	}
+	fmt.Printf("[DEBUG] StartPipeline: Pipeline state updated successfully\n")
 
 	// Create running pipeline context
 	fmt.Printf("[DEBUG] StartPipeline: Creating running pipeline context\n")
@@ -151,11 +161,12 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 	//	psm.logExecutionEvent(execution.ID, event)
 	// }
 
-	// MOCK register running pipeline - bypass mutex to avoid deadlock
-	fmt.Printf("[DEBUG] StartPipeline: MOCK registering running pipeline\n")
-	// Skip mutex operation for API testing to avoid deadlock
-	// TODO: Restore proper pipeline registration when DB issues are fixed
-	fmt.Printf("[DEBUG] StartPipeline: Mock running pipeline registered\n")
+	// Register running pipeline
+	fmt.Printf("[DEBUG] StartPipeline: Registering running pipeline\n")
+	psm.mu.Lock()
+	psm.runningPipelines[pipelineID] = runningPipeline
+	psm.mu.Unlock()
+	fmt.Printf("[DEBUG] StartPipeline: Running pipeline registered\n")
 
 	// Emit state change event
 	fmt.Printf("[DEBUG] StartPipeline: Emitting state change event\n")
@@ -356,37 +367,86 @@ func (psm *PipelineStateManager) executePipeline(runningPipeline *RunningPipelin
 	duration := time.Since(runningPipeline.StartTime)
 	durationMs := int(duration.Milliseconds())
 
-	// Update execution record only
+	// Update execution record
 	psm.updateExecution(runningPipeline.Execution.ID, finalState, &durationMs, errorMsg)
 
-	// MOCK update pipeline state - bypass database to avoid nil pointer
-	// TODO: Restore proper state updates when DB issues are fixed
-	fmt.Printf("[DEBUG] executePipeline: Mock updating pipeline state to %s\n", finalState)
+	// Update pipeline state in database
+	err := psm.pipelineManager.UpdatePipelineState(runningPipeline.ID, finalState)
+	if err != nil {
+		fmt.Printf("[ERROR] executePipeline: Failed to update pipeline state to %s: %v\n", finalState, err)
+	}
+
+	// Emit final state change event
+	psm.emitStateEvent(StateEvent{
+		PipelineID:   runningPipeline.ID,
+		PipelineName: pipelineRecord.Name,
+		OldState:     StateRunning,
+		NewState:     finalState,
+		Timestamp:    time.Now(),
+		ExecutionID:  &runningPipeline.Execution.ID,
+		Error:        errorMsg,
+	})
 }
 
-// createExecution creates a new execution record - ULTRA SIMPLIFIED for API testing
+// createExecution creates a new execution record
 func (psm *PipelineStateManager) createExecution(pipelineID int, triggerType, triggerData string) (*Execution, error) {
-	// MOCK execution for API testing - avoid all DB complexity
-	execution := &Execution{
-		ID:          99, // Fixed ID for testing
-		PipelineID:  pipelineID,
-		Status:      StateRunning,
-		StartedAt:   time.Now().Format(time.RFC3339),
-		TriggerType: triggerType,
-	}
-
+	// Use simpler INSERT approach for SQLite compatibility
+	var triggerDataPtr *string
 	if triggerData != "" {
-		execution.TriggerData = &triggerData
+		triggerDataPtr = &triggerData
 	}
 
-	return execution, nil
+	// Insert execution record
+	insertQuery := `
+		INSERT INTO executions (pipeline_id, status, trigger_type, trigger_data, started_at)
+		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+	`
+
+	result, err := psm.db.Exec(insertQuery, pipelineID, StateRunning, triggerType, triggerDataPtr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to insert execution: %w", err)
+	}
+
+	executionID, err := result.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get execution ID: %w", err)
+	}
+
+	// Get the created execution
+	selectQuery := `
+		SELECT id, pipeline_id, status, started_at, completed_at, duration_ms, error_message, trigger_type, trigger_data
+		FROM executions WHERE id = ?
+	`
+
+	var execution Execution
+	err = psm.db.QueryRow(selectQuery, executionID).Scan(
+		&execution.ID, &execution.PipelineID, &execution.Status,
+		&execution.StartedAt, &execution.CompletedAt, &execution.DurationMs,
+		&execution.ErrorMessage, &execution.TriggerType, &execution.TriggerData,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve execution: %w", err)
+	}
+
+	return &execution, nil
 }
 
-// updateExecution updates an execution record - MOCK for API testing
+// updateExecution updates an execution record
 func (psm *PipelineStateManager) updateExecution(executionID int, status string, durationMs *int, errorMsg string) error {
-	// MOCK update - no actual DB operation for API testing
-	// TODO: Implement actual DB update when ready
-	return nil
+	var errorMsgPtr *string
+	if errorMsg != "" {
+		errorMsgPtr = &errorMsg
+	}
+
+	query := `
+		UPDATE executions
+		SET status = ?, completed_at = CURRENT_TIMESTAMP, duration_ms = ?, error_message = ?
+		WHERE id = ?
+	`
+
+	_, err := psm.db.Exec(query, status, durationMs, errorMsgPtr, executionID)
+	return err
 }
 
 // logExecutionEvent logs a step execution event

@@ -203,10 +203,28 @@ func (s *APIServer) handleGetPipelineStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// MOCK status for API testing to avoid nil pointer dereference
-	fmt.Printf("[DEBUG] handleGetPipelineStatus: Using MOCK status for pipeline %d\n", id)
-	status := "CREATED" // Mock status
-	isRunning := false  // Mock not running
+	// Check if pipeline exists first
+	_, err = s.manager.Pipelines().GetPipeline(id)
+	if err != nil {
+		s.logger.Error("Failed to get pipeline for status", "error", err, "id", id)
+		if strings.Contains(err.Error(), "not found") {
+			s.sendError(w, http.StatusNotFound, "Pipeline not found")
+		} else {
+			s.sendError(w, http.StatusInternalServerError, "Failed to retrieve pipeline")
+		}
+		return
+	}
+
+	// Get status from state manager
+	status, err := s.manager.PipelineState().GetPipelineStatus(id)
+	if err != nil {
+		s.logger.Error("Failed to get pipeline status", "error", err, "id", id)
+		s.sendError(w, http.StatusInternalServerError, "Failed to retrieve pipeline status")
+		return
+	}
+
+	// Check if running
+	isRunning := s.manager.PipelineState().IsRunning(id)
 
 	s.sendSuccess(w, map[string]interface{}{
 		"pipeline_id": id,
@@ -243,26 +261,29 @@ func (s *APIServer) handleStartPipeline(w http.ResponseWriter, r *http.Request) 
 		req.TriggerType = "manual"
 	}
 
-	// MOCK pipeline for API testing - bypass database completely to avoid deadlock
-	fmt.Printf("[DEBUG] handleStartPipeline: Using MOCK pipeline to bypass database deadlock\n")
-	pipeline := &db.Pipeline{
-		ID:          id,
-		Name:        fmt.Sprintf("mock-pipeline-%d", id),
-		Description: "Mock pipeline for API testing",
-		Enabled:     true,
-		State:       "CREATED",
+	// Check if pipeline exists and get its details
+	pipeline, err := s.manager.Pipelines().GetPipeline(id)
+	if err != nil {
+		s.logger.Error("Failed to get pipeline for start", "error", err, "id", id)
+		if strings.Contains(err.Error(), "not found") {
+			s.sendError(w, http.StatusNotFound, "Pipeline not found")
+		} else {
+			s.sendError(w, http.StatusInternalServerError, "Failed to retrieve pipeline")
+		}
+		return
 	}
-	fmt.Printf("[DEBUG] handleStartPipeline: Created mock pipeline: %s\n", pipeline.Name)
 
-	// MOCK running check - bypass potential deadlock
-	fmt.Printf("[DEBUG] handleStartPipeline: Skipping running check for mock testing\n")
-	// Mock: assume pipeline is not running for testing purposes
-	isRunning := false
-	if isRunning {
+	// Check if pipeline is already running
+	if s.manager.PipelineState().IsRunning(id) {
 		s.sendError(w, http.StatusConflict, "Pipeline is already running")
 		return
 	}
-	fmt.Printf("[DEBUG] handleStartPipeline: Pipeline not running, continuing\n")
+
+	// Check if pipeline is enabled
+	if !pipeline.Enabled {
+		s.sendError(w, http.StatusForbidden, "Pipeline is disabled")
+		return
+	}
 
 	// Start pipeline
 	execution, err := s.manager.PipelineState().StartPipeline(id, req.TriggerType, req.TriggerData)
