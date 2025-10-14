@@ -80,7 +80,7 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 		p.state = &core.PipelineState{Results: make(map[string]map[string]*core.Data), Logger: logger}
 	}
 
-	core.StartWebServer()
+	// core.StartWebServer()
 
 	if len(p.triggers) > 0 {
 		logger.Info("Found", slog.Int("triggers", len(p.triggers)))
@@ -172,4 +172,9 @@ func (p *Pipeline) RunFromTriggers() {
 	slog.Info("Waiting for triggers")
 	select {}
 	// wg.Wait()
+}
+
+// GetTriggers returns the triggers map
+func (p *Pipeline) GetTriggers() map[string]core.Trigger {
+	return p.triggers
 }

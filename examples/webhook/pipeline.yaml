@@ -1,35 +1,47 @@
 steps:
-  - name: input1
-    type: map
+  - name: webhook1
+    type: webhook
     config:
-      fields:
-        - name: data
-          value: [{"Codice":"1","Descrizione":"Decrizione1"}]
-  - name: foreach1
-    type: foreach
+      method: get
+      path: prova
+  - name: output
+    type: stdout
     inputs:
-      - input1
+      - webhook1
     config:
-      list: ctx.input1.data
-      steps:
-        - name: say_hello
-          type: stdout
-          config:
-            value: '`Hello ${ctx.foreach.item.Codice}`'
-        - name: transform1
-          type: map
-          config:
-            fields:
-             - name: code
-               value: ctx.foreach.item.Codice
-             - name: description
-               value: ctx.foreach.item.Descrizione
-        - name: print1
-          type: stdout
-          inputs:
-            - transform1
-          config:
-            value: '`Transformed item: ${ctx.transform1.code} - ${ctx.transform1.description}`'
+      value: ctx.webhook1.Value
+# steps:
+#   - name: input1
+#     type: map
+#     config:
+#       fields:
+#         - name: data
+#           value: [{"Codice":"1","Descrizione":"Decrizione1"}]
+#   - name: foreach1
+#     type: foreach
+#     inputs:
+#       - input1
+#     config:
+#       list: ctx.input1.data
+#       steps:
+#         - name: say_hello
+#           type: stdout
+#           config:
+#             value: '`Hello ${ctx.foreach.item.Codice}`'
+#         - name: transform1
+#           type: map
+#           config:
+#             fields:
+#              - name: code
+#                value: ctx.foreach.item.Codice
+#              - name: description
+#                value: ctx.foreach.item.Descrizione
+#         - name: print1
+#           type: stdout
+#           inputs:
+#             - transform1
+#           config:
+#             value: '`Transformed item: ${ctx.transform1.code} - ${ctx.transform1.description}`'
   # - name: if1
   #   type: if
   #   config:

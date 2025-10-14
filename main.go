@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 
-	"go-etl/core"
 	"go-etl/pipeline"
 	_ "go-etl/steps"
 	"go-etl/web"
@@ -44,10 +43,14 @@ func main() {
 		return
 	}
 
-	defer core.StopWebServer(context.Background())
+	// defer core.StopWebServer(context.Background())
 
 	if *webFlag {
 		web.StartServer(logger)
+		// return
+	}
+
+	if fileFlag == nil {
 		return
 	}
 

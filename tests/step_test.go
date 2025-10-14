@@ -79,6 +79,54 @@ func TestUppercase(t *testing.T) {
 	}
 }
 
+func TestStdout(t *testing.T) {
+	stepFactory, ok := pipeline.GetStepFactory("stdout")
+	if !ok {
+		t.Errorf("Step type 'stdout' not registered")
+	}
+
+	stepInstance, err := stepFactory("testStdout", map[string]any{
+		"value": "ctx.input1.code",
+	})
+
+	if err != nil {
+		t.Errorf("Failed to create step instance: %v", err)
+	}
+	if stepInstance == nil {
+		t.Error("Step instance is nil")
+	}
+	if stepInstance.Name() != "testStdout" {
+		t.Errorf("Expected step name 'testMap', got '%s'", stepInstance.Name())
+	}
+
+	ctx := context.Background()
+	input1Result := core.CreateDefaultResultData(map[string]interface{}{
+		"code":        "code1",
+		"description": "description1",
+	})
+
+	state := &core.PipelineState{
+		Results: map[string]map[string]*core.Data{
+			"input1": input1Result,
+		},
+	}
+	result, err := stepInstance.Run(ctx, state)
+	if err != nil {
+		t.Errorf("Step execution failed: %v", err)
+	}
+	if result == nil {
+		t.Error("Step execution returned nil result")
+	} else {
+		value, ok := result["default"].Value.(string)
+		if !ok || value != "code1" {
+			t.Error("Expected code 'code1'")
+		}
+
+		t.Logf("Step executed successfully, result: %v", result["default"].Value)
+	}
+
+}
+
 func TestMap(t *testing.T) {
 	stepFactory, ok := pipeline.GetStepFactory("map")
 	if !ok {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -13,35 +14,35 @@ import (
 
 // PipelineStateManager handles pipeline state transitions and execution tracking
 type PipelineStateManager struct {
-	db              *sql.DB
-	pipelineManager *PipelineManager
+	db               *sql.DB
+	pipelineManager  *PipelineManager
 	runningPipelines map[int]*RunningPipeline
-	mu              sync.RWMutex
-	eventListeners  []StateEventListener
+	mu               sync.RWMutex
+	eventListeners   []StateEventListener
 }
 
 // RunningPipeline tracks an active pipeline execution
 type RunningPipeline struct {
-	ID          int
-	Pipeline    *pipeline.Pipeline
-	Execution   *Execution
-	Context     context.Context
-	CancelFunc  context.CancelFunc
-	StartTime   time.Time
-	Status      string
-	mu          sync.RWMutex
+	ID         int
+	Pipeline   *pipeline.Pipeline
+	Execution  *Execution
+	Context    context.Context
+	CancelFunc context.CancelFunc
+	StartTime  time.Time
+	Status     string
+	mu         sync.RWMutex
 }
 
 // StateEvent represents a pipeline state change event
 type StateEvent struct {
-	PipelineID   int                `json:"pipeline_id"`
-	PipelineName string             `json:"pipeline_name"`
-	OldState     string             `json:"old_state"`
-	NewState     string             `json:"new_state"`
-	Timestamp    time.Time          `json:"timestamp"`
-	ExecutionID  *int               `json:"execution_id,omitempty"`
+	PipelineID   int                   `json:"pipeline_id"`
+	PipelineName string                `json:"pipeline_name"`
+	OldState     string                `json:"old_state"`
+	NewState     string                `json:"new_state"`
+	Timestamp    time.Time             `json:"timestamp"`
+	ExecutionID  *int                  `json:"execution_id,omitempty"`
 	Data         map[string]*core.Data `json:"data,omitempty"`
-	Error        string             `json:"error,omitempty"`
+	Error        string                `json:"error,omitempty"`
 }
 
 // StateEventListener defines the interface for state event listeners
@@ -59,10 +60,10 @@ func (f StateEventListenerFunc) OnStateChange(event StateEvent) {
 // NewPipelineStateManager creates a new pipeline state manager
 func NewPipelineStateManager(db *sql.DB, pipelineManager *PipelineManager) *PipelineStateManager {
 	return &PipelineStateManager{
-		db:              db,
-		pipelineManager: pipelineManager,
+		db:               db,
+		pipelineManager:  pipelineManager,
 		runningPipelines: make(map[int]*RunningPipeline),
-		eventListeners:  make([]StateEventListener, 0),
+		eventListeners:   make([]StateEventListener, 0),
 	}
 }
 
@@ -116,10 +117,14 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 	}
 	fmt.Printf("[DEBUG] StartPipeline: Pipeline is enabled, continuing\n")
 
-	// Skip pipeline loading for API testing (TODO: Fix pipeline loading)
-	// For now, we'll create a mock pipeline execution without actually loading the YAML
-	fmt.Printf("[DEBUG] StartPipeline: Creating mock pipeline config\n")
-	config := (*pipeline.Pipeline)(nil) // Mock pipeline
+	// Load pipeline from YAML configuration
+	fmt.Printf("[DEBUG] StartPipeline: Loading pipeline from YAML\n")
+	pipelineInstance, err := pipeline.LoadPipelineFromYAML(pipelineRecord.ConfigYAML)
+	if err != nil {
+		fmt.Printf("[DEBUG] StartPipeline: Failed to load pipeline YAML: %v\n", err)
+		return nil, fmt.Errorf("failed to load pipeline configuration: %w", err)
+	}
+	fmt.Printf("[DEBUG] StartPipeline: Pipeline loaded successfully\n")
 
 	// Create execution record
 	fmt.Printf("[DEBUG] StartPipeline: Creating execution record\n")
@@ -147,7 +152,7 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 	ctx, cancel := context.WithCancel(context.Background())
 	runningPipeline := &RunningPipeline{
 		ID:         pipelineID,
-		Pipeline:   config,
+		Pipeline:   pipelineInstance,
 		Execution:  execution,
 		Context:    ctx,
 		CancelFunc: cancel,
@@ -156,10 +161,10 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 	}
 	fmt.Printf("[DEBUG] StartPipeline: Created running pipeline struct\n")
 
-	// Skip event handler setup for mock pipeline
-	// config.OnChange = func(event core.ChangeEvent) {
-	//	psm.logExecutionEvent(execution.ID, event)
-	// }
+	// Set up event handler for pipeline execution logging
+	pipelineInstance.OnChange = func(event core.ChangeEvent) {
+		psm.logExecutionEvent(execution.ID, event)
+	}
 
 	// Register running pipeline
 	fmt.Printf("[DEBUG] StartPipeline: Registering running pipeline\n")
@@ -351,18 +356,41 @@ func (psm *PipelineStateManager) executePipeline(runningPipeline *RunningPipelin
 	var finalState string
 	var errorMsg string
 
-	// SIMPLIFIED MOCK implementation for API testing - instant completion
-	// TODO: Replace with actual pipeline execution when step engine is ready
+	// Check if pipeline has triggers (webhook pipelines should remain active)
+	// if runningPipeline.Pipeline != nil && psm.pipelineHasTriggers(runningPipeline.Pipeline) {
+	// 	fmt.Printf("[DEBUG] executePipeline: Pipeline has triggers, starting trigger-based execution\n")
 
-	// Check if context was cancelled immediately
-	select {
-	case <-runningPipeline.Context.Done():
-		finalState = StateStopped
-		errorMsg = "Pipeline execution was stopped"
-	default:
-		// Simulate instant successful completion for testing
+	// 	// For trigger-based pipelines, run indefinitely until cancelled
+	// 	pipelineInstance := runningPipeline.Pipeline
+	// 	pipelineInstance.OnChange = func(event core.ChangeEvent) {
+	// 		psm.logExecutionEvent(runningPipeline.Execution.ID, event)
+	// 	}
+
+	// 	// Don't call core.StartWebServer() since we have our own APIServer
+	// 	// Instead, manually call RunFromTriggers without starting web server
+	// 	psm.runTriggersWithoutWebServer(pipelineInstance, runningPipeline.Context)
+
+	// 	// Pipeline was stopped/cancelled
+	// 	finalState = StateStopped
+	// 	errorMsg = "Pipeline execution was stopped"
+	// } else {
+	fmt.Printf("[DEBUG] executePipeline: Running pipeline without triggers\n")
+
+	// For non-trigger pipelines, run once and complete
+	if runningPipeline.Pipeline != nil {
+		logger := slog.Default() // Get default logger
+		err := runningPipeline.Pipeline.Run(runningPipeline.Context, logger)
+		if err != nil {
+			finalState = StateError
+			errorMsg = err.Error()
+		} else {
+			finalState = StateCompleted
+		}
+	} else {
+		// Fallback for nil pipeline
 		finalState = StateCompleted
 	}
+	// }
 
 	duration := time.Since(runningPipeline.StartTime)
 	durationMs := int(duration.Milliseconds())
@@ -473,4 +501,3 @@ func (psm *PipelineStateManager) logExecutionEvent(executionID int, event core.C
 
 	psm.db.Exec(query, executionID, stepName, level, message, data)
 }
-

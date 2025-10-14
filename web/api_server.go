@@ -65,6 +65,9 @@ func NewAPIServer(logger *slog.Logger) (*APIServer, error) {
 	server.setupRoutes()
 	go server.handleWebSocketBroadcast()
 
+	// Register router for webhook access
+	GetWebhookRegistry().SetRouter(server.router)
+
 	return server, nil
 }
 
