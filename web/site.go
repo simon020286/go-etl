@@ -43,6 +43,12 @@ func StartServer(logger *slog.Logger) {
 
 	go startWebSocket()
 
+	// Restore pipelines that were running when server stopped
+	logger.Info("Restoring running pipelines from previous session")
+	if err := apiServer.RestoreRunningPipelines(); err != nil {
+		logger.Error("Failed to restore running pipelines", "error", err)
+	}
+
 	fmt.Println("Starting server on :8080")
 	fmt.Println("API endpoints available at: http://localhost:8080/api/v1/")
 	fmt.Println("WebSocket endpoint: ws://localhost:8080/ws")

@@ -339,13 +339,7 @@ func (s *APIServer) handleStopPipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if running
-	if !s.manager.PipelineState().IsRunning(id) {
-		s.sendError(w, http.StatusConflict, "Pipeline is not running")
-		return
-	}
-
-	// Stop pipeline
+	// Stop pipeline (handles both in-memory and DB-only running pipelines)
 	err = s.manager.PipelineState().StopPipeline(id)
 	if err != nil {
 		s.logger.Error("Failed to stop pipeline", "error", err, "id", id)

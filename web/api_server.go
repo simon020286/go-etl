@@ -273,3 +273,8 @@ func (s *APIServer) BroadcastMessage(messageType string, data interface{}) {
 		// Channel is full, skip message
 	}
 }
+
+// RestoreRunningPipelines restores pipelines that were running when server stopped
+func (s *APIServer) RestoreRunningPipelines() error {
+	return s.manager.PipelineState().RestoreRunningPipelines()
+}

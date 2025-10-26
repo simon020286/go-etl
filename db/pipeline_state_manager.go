@@ -195,21 +195,47 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 
 // StopPipeline stops a running pipeline
 func (psm *PipelineStateManager) StopPipeline(pipelineID int) error {
+	// Get pipeline record to check current state
+	pipelineRecord, err := psm.pipelineManager.GetPipeline(pipelineID)
+	if err != nil {
+		return fmt.Errorf("failed to get pipeline: %w", err)
+	}
+
 	psm.mu.RLock()
 	runningPipeline, exists := psm.runningPipelines[pipelineID]
 	psm.mu.RUnlock()
 
-	if !exists {
-		return fmt.Errorf("pipeline %d is not running", pipelineID)
+	if exists {
+		// Pipeline is actually running in memory - cancel it
+		runningPipeline.CancelFunc()
+
+		// Update in-memory status
+		runningPipeline.mu.Lock()
+		runningPipeline.Status = StateStopped
+		runningPipeline.mu.Unlock()
+	} else if pipelineRecord.State != StateRunning && pipelineRecord.State != StatePaused {
+		// Pipeline is not running in DB either
+		return fmt.Errorf("pipeline %d is not running (current state: %s)", pipelineID, pipelineRecord.State)
+	}
+	// else: Pipeline is RUNNING/PAUSED in DB but not in memory - just update DB
+
+	// Update database state to STOPPED
+	oldState := pipelineRecord.State
+	err = psm.pipelineManager.UpdatePipelineState(pipelineID, StateStopped)
+	if err != nil {
+		return fmt.Errorf("failed to update pipeline state: %w", err)
 	}
 
-	// Cancel the pipeline context
-	runningPipeline.CancelFunc()
+	// Emit state change event
+	psm.emitStateEvent(StateEvent{
+		PipelineID:   pipelineID,
+		PipelineName: pipelineRecord.Name,
+		OldState:     oldState,
+		NewState:     StateStopped,
+		Timestamp:    time.Now(),
+	})
 
-	// Update status
-	runningPipeline.mu.Lock()
-	runningPipeline.Status = StateStopped
-	runningPipeline.mu.Unlock()
+	slog.Info("Pipeline stopped", slog.Int("pipeline_id", pipelineID), slog.String("was_in_memory", fmt.Sprintf("%v", exists)))
 
 	return nil
 }
@@ -475,6 +501,68 @@ func (psm *PipelineStateManager) updateExecution(executionID int, status string,
 
 	_, err := psm.db.Exec(query, status, durationMs, errorMsgPtr, executionID)
 	return err
+}
+
+// RestoreRunningPipelines restarts all pipelines that were RUNNING when the server stopped
+func (psm *PipelineStateManager) RestoreRunningPipelines() error {
+	slog.Info("Restoring running pipelines from database")
+
+	// Query all pipelines with RUNNING or PAUSED state
+	query := `SELECT id, name, state FROM pipelines WHERE state IN (?, ?)`
+	rows, err := psm.db.Query(query, StateRunning, StatePaused)
+	if err != nil {
+		return fmt.Errorf("failed to query running pipelines: %w", err)
+	}
+	defer rows.Close()
+
+	var pipelinesToRestore []struct {
+		ID    int
+		Name  string
+		State string
+	}
+
+	for rows.Next() {
+		var p struct {
+			ID    int
+			Name  string
+			State string
+		}
+		if err := rows.Scan(&p.ID, &p.Name, &p.State); err != nil {
+			slog.Error("Failed to scan pipeline row", "error", err)
+			continue
+		}
+		pipelinesToRestore = append(pipelinesToRestore, p)
+	}
+
+	if len(pipelinesToRestore) == 0 {
+		slog.Info("No pipelines to restore")
+		return nil
+	}
+
+	slog.Info("Found pipelines to restore", slog.Int("count", len(pipelinesToRestore)))
+
+	// Restart each pipeline
+	for _, p := range pipelinesToRestore {
+		slog.Info("Restoring pipeline", slog.Int("id", p.ID), slog.String("name", p.Name), slog.String("state", p.State))
+
+		// First set state to CREATED to allow StartPipeline to work
+		err := psm.pipelineManager.UpdatePipelineState(p.ID, StateCreated)
+		if err != nil {
+			slog.Error("Failed to reset pipeline state to IDLE", slog.Int("id", p.ID), slog.Any("error", err))
+			continue
+		}
+
+		// Start the pipeline
+		_, err = psm.StartPipeline(p.ID, "system", "restored_on_startup")
+		if err != nil {
+			slog.Error("Failed to restore pipeline", slog.Int("id", p.ID), slog.String("name", p.Name), slog.Any("error", err))
+			continue
+		}
+
+		slog.Info("Pipeline restored successfully", slog.Int("id", p.ID), slog.String("name", p.Name))
+	}
+
+	return nil
 }
 
 // logExecutionEvent logs a step execution event

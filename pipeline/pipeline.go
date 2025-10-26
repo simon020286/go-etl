@@ -84,7 +84,7 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 
 	if len(p.triggers) > 0 {
 		logger.Info("Found", slog.Int("triggers", len(p.triggers)))
-		p.RunFromTriggers()
+		p.RunFromTriggers(ctx)
 		return nil
 	}
 
@@ -148,7 +148,7 @@ func (p *Pipeline) SetState(state *core.PipelineState) {
 	p.state = state
 }
 
-func (p *Pipeline) RunFromTriggers() {
+func (p *Pipeline) RunFromTriggers(ctx context.Context) {
 	// wg := sync.WaitGroup{}
 	// wg.Add(1)
 	for _, trigger := range p.triggers {
@@ -170,7 +170,9 @@ func (p *Pipeline) RunFromTriggers() {
 		})
 	}
 	slog.Info("Waiting for triggers")
-	select {}
+	// Wait for context cancellation
+	<-ctx.Done()
+	slog.Info("Pipeline cancelled, stopping trigger listeners")
 	// wg.Wait()
 }
 

@@ -75,6 +75,10 @@ func (m *Manager) PipelineState() *PipelineStateManager {
 
 	// Double-check after acquiring lock
 	if m.pipelineStateManager == nil {
+		// Ensure pipelineManager is initialized first
+		if m.pipelineManager == nil {
+			m.pipelineManager = NewPipelineManager(m.db)
+		}
 		// Create with proper initialization but avoid circular dependency
 		m.pipelineStateManager = NewPipelineStateManager(m.db, m.pipelineManager)
 	}

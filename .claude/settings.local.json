@@ -10,7 +10,9 @@
       "Bash(curl:*)",
       "Bash(pkill:*)",
       "Bash(./etl:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(sqlite3:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []
