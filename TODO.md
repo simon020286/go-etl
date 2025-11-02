@@ -18,11 +18,44 @@
 - [ ] Enhance UI with filtering, search, and pagination
 - [ ] Add statistics and monitoring dashboard
 - [ ] Implement backup/restore functionality
+- [ ] Add step retry logic with exponential backoff
+- [ ] Implement circuit breaker pattern for resilience
+- [ ] Create dead letter queue for failed executions
 
 ### Low Priority
 - [ ] Add comprehensive error handling and validation
 - [ ] Create documentation and API reference
 - [ ] Add tests for multi-pipeline management features
+- [ ] Implement pipeline dry-run mode for testing
+- [ ] Add step mocking capabilities for unit testing
+- [ ] Create validation schema for pipeline configurations
+- [ ] Implement authentication and authorization system
+- [ ] Add multi-tenancy support with pipeline isolation
+- [ ] Create RBAC (Role-Based Access Control) system
+
+## Future Advanced Features
+
+### Data Transformation Steps
+- [ ] JSON Transform step (jq-like operations)
+- [ ] CSV Reader/Writer steps
+- [ ] Excel Reader/Writer steps
+- [ ] HTTP Client step with retry and auth
+- [ ] Database connector steps (MySQL, PostgreSQL, MongoDB)
+- [ ] Data validation and sanitization steps
+
+### System Integrations
+- [ ] Email notification step (SMTP)
+- [ ] Slack/Teams notification steps
+- [ ] S3/Cloud storage integration steps
+- [ ] Message queue integration (RabbitMQ, Kafka)
+- [ ] GraphQL client step
+
+### Advanced Pipeline Features
+- [ ] Pipeline versioning system
+- [ ] Pipeline import/export with dependencies
+- [ ] Conditional pipeline execution based on schedules
+- [ ] Pipeline composition and sub-pipelines
+- [ ] Dynamic pipeline generation from templates
 
 ## Recent Changes (2025-10-14)
 
