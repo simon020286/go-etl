@@ -12,7 +12,9 @@
       "Bash(./etl:*)",
       "Bash(cat:*)",
       "Bash(sqlite3:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nRefactor webhook trigger: lazy HTTP endpoint registration\n\nMove HTTP endpoint registration from init() to SetOnTrigger() for\nconsistent trigger pattern and better resource management.\n\nChanges:\n- Webhook endpoints now registered when pipeline runs, not when loaded\n- Added ''path'' field to WebhookStep struct for deferred setup\n- Created trigger_pattern.md documenting standard implementation pattern\n\nBenefits:\n- No memory leak if pipeline loaded but never executed\n- No conflicts between multiple pipelines with same webhook path\n- Consistent with cron trigger (setup in SetOnTrigger)\n- Resources allocated only when needed\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []

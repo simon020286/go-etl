@@ -190,7 +190,15 @@ func (p *Pipeline) RunFromTriggers(ctx context.Context) {
 	// Wait for context cancellation
 	<-ctx.Done()
 	slog.Info("Pipeline cancelled, stopping trigger listeners")
-	// wg.Wait()
+
+	// Stop all triggers
+	for _, trigger := range p.triggers {
+		if err := trigger.Stop(); err != nil {
+			slog.Error("Failed to stop trigger",
+				slog.String("trigger", trigger.Name()),
+				slog.Any("error", err))
+		}
+	}
 }
 
 // GetTriggers returns the triggers map

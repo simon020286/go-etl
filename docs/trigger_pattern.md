@@ -190,19 +190,78 @@ Users can then access:
 - `ctx.trigger_name.timestamp` - additional fields
 - `ctx.trigger_name.metadata` - more fields
 
-## Cleanup (Optional)
+## Cleanup (Required)
 
-If your trigger needs cleanup (closing connections, stopping timers), implement a `Stop()` method:
+All triggers **must** implement the `Stop() error` method for proper cleanup:
 
 ```go
-func (s *MyTriggerStep) Stop() {
+func (s *MyTriggerStep) Stop() error {
     if s.stopChan != nil {
         close(s.stopChan)
+        slog.Info("Stopping trigger", slog.String("name", s.name))
     }
+    return nil
 }
 ```
 
-Call this from the stop channel case in your event loop.
+The `Stop()` method is called automatically when:
+- The pipeline receives SIGINT (Ctrl+C) or SIGTERM
+- The context is cancelled
+- The application shuts down
+
+**Important**: Always handle the stop channel in your event loop:
+
+```go
+go func() {
+    for {
+        select {
+        case event := <-s.channel:
+            // Process event
+            callback(data)
+        case <-s.stopChan:
+            // Cleanup here (close connections, stop timers, etc.)
+            cleanup()
+            return  // Exit goroutine
+        }
+    }
+}()
+```
+
+### Cleanup Examples
+
+**Cron Trigger:**
+```go
+func (s *CronStep) Stop() error {
+    if s.stopChan != nil {
+        close(s.stopChan)  // Ticker.Stop() called in goroutine
+    }
+    return nil
+}
+```
+
+**Webhook Trigger:**
+```go
+func (s *WebhookStep) Stop() error {
+    if s.stopChan != nil {
+        close(s.stopChan)  // Stops processing incoming requests
+    }
+    // HTTP handlers return 503 after stop
+    return nil
+}
+```
+
+**MQTT Trigger (example):**
+```go
+func (s *MQTTStep) Stop() error {
+    if s.stopChan != nil {
+        close(s.stopChan)
+    }
+    if s.client != nil {
+        s.client.Disconnect(250)  // Disconnect from broker
+    }
+    return nil
+}
+```
 
 ## Examples
 
@@ -252,13 +311,18 @@ func TestMyTrigger(t *testing.T) {
 When implementing a new trigger:
 
 - [ ] Struct has configuration fields only (no channels/timers in init)
+- [ ] Struct has `stopChan chan struct{}` field
 - [ ] `Name()` returns the trigger name
 - [ ] `Run()` returns placeholder result
 - [ ] `SetOnTrigger()` creates runtime resources
+- [ ] `SetOnTrigger()` creates and initializes stopChan
 - [ ] `SetOnTrigger()` starts goroutine with event loop
+- [ ] Event loop uses select with both event and stop channels
 - [ ] Event loop calls callback with trigger data
+- [ ] Event loop exits on stopChan close
 - [ ] Trigger data includes `"default"` output
 - [ ] `init()` only parses and validates config
 - [ ] `init()` does NOT create channels or runtime resources
-- [ ] Optional: `Stop()` method for cleanup
+- [ ] `Stop() error` method closes stopChan and cleans up resources
 - [ ] Tests verify callback is called with correct data
+- [ ] Tests verify graceful shutdown works

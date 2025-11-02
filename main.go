@@ -5,6 +5,8 @@ import (
 	"flag"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"go-etl/pipeline"
 	_ "go-etl/steps"
@@ -60,7 +62,20 @@ func main() {
 		return
 	}
 
-	ctx := context.Background()
+	// Create context that cancels on SIGINT/SIGTERM
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Setup signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigChan
+		logger.Info("Received signal, shutting down gracefully", "signal", sig)
+		cancel()
+	}()
+
 	if err = pipeline.Run(ctx, logger); err != nil {
 		logger.Error("Pipeline run failed", "error", err)
 		return

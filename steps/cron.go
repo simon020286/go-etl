@@ -67,10 +67,12 @@ func (s *CronStep) SetOnTrigger(callback func(data map[string]*core.Data)) error
 	return nil
 }
 
-func (s *CronStep) Stop() {
+func (s *CronStep) Stop() error {
 	if s.stopChan != nil {
 		close(s.stopChan)
+		slog.Info("Stopping cron trigger", slog.String("name", s.name))
 	}
+	return nil
 }
 
 // parseCronExpression converts a cron-like expression to a time.Duration

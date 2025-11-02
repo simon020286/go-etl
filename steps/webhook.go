@@ -18,10 +18,11 @@ type webhookResponse struct {
 }
 
 type WebhookStep struct {
-	name    string
-	trigger chan webhookResponse
-	method  string
-	path    string
+	name     string
+	trigger  chan webhookResponse
+	method   string
+	path     string
+	stopChan chan struct{}
 }
 
 func (s *WebhookStep) Name() string { return s.name }
@@ -35,6 +36,8 @@ func (s *WebhookStep) Run(ctx context.Context, state *core.PipelineState) (map[s
 }
 
 func (s *WebhookStep) SetOnTrigger(callback func(data map[string]*core.Data)) error {
+	s.stopChan = make(chan struct{})
+
 	// Register webhook endpoint when the pipeline actually runs
 	registry := web.GetWebhookRegistry()
 	router := registry.GetRouter()
@@ -90,9 +93,15 @@ func (s *WebhookStep) SetOnTrigger(callback func(data map[string]*core.Data)) er
 
 			}
 
-			s.trigger <- webhookResponse{Value: data}
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Webhook triggered"))
+			// Check if trigger is still active before sending
+			select {
+			case s.trigger <- webhookResponse{Value: data}:
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("Webhook triggered"))
+			case <-s.stopChan:
+				w.WriteHeader(http.StatusServiceUnavailable)
+				w.Write([]byte("Pipeline stopped"))
+			}
 		}).Methods(strings.ToUpper(s.method))
 
 		slog.Info("Webhook endpoint registered", slog.String("path", "/webhook/"+s.path), slog.String("method", strings.ToUpper(s.method)))
@@ -102,12 +111,28 @@ func (s *WebhookStep) SetOnTrigger(callback func(data map[string]*core.Data)) er
 
 	// Start goroutine to handle incoming webhook events
 	go func() {
-		for t := range s.trigger {
-			slog.Info("Webhook triggered", slog.Attr{Key: "value", Value: slog.AnyValue(t.Value)})
-			callback(core.CreateDefaultResultData(t.Value))
+		for {
+			select {
+			case t := <-s.trigger:
+				slog.Info("Webhook triggered", slog.Attr{Key: "value", Value: slog.AnyValue(t.Value)})
+				callback(core.CreateDefaultResultData(t.Value))
+			case <-s.stopChan:
+				slog.Info("Webhook trigger stopped", slog.String("name", s.name))
+				return
+			}
 		}
 	}()
 
+	return nil
+}
+
+func (s *WebhookStep) Stop() error {
+	if s.stopChan != nil {
+		close(s.stopChan)
+		slog.Info("Stopping webhook trigger", slog.String("name", s.name), slog.String("path", "/webhook/"+s.path))
+	}
+	// Note: HTTP handlers cannot be unregistered from gorilla/mux
+	// The handler will return 503 after stop due to stopChan check
 	return nil
 }
 

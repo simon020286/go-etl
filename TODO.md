@@ -83,6 +83,19 @@
   - Multiple cron triggers can coexist in same pipeline
   - Each trigger fires independently and creates new pipeline execution
 
+### Trigger Lifecycle & Cleanup Implementation (2025-11-02)
+- **Files**: `steps/webhook.go`, `steps/cron.go`, `main.go`, `pipeline/pipeline.go`
+  - **Added graceful shutdown support for all triggers**
+  - Implemented `Stop() error` method in webhook and cron triggers
+  - Added signal handling (SIGINT/SIGTERM) in main.go
+  - Pipeline now calls `Stop()` on all triggers when context is cancelled
+  - Benefits:
+    - No goroutine leaks when pipeline stops
+    - Proper cleanup of resources (timers, channels)
+    - Webhook returns 503 after stop instead of hanging
+    - Clean shutdown logs for monitoring
+  - Updated trigger_pattern.md with cleanup requirements
+
 ### Webhook Refactoring - Lazy HTTP Registration (2025-11-02)
 - **File**: `steps/webhook.go`
   - **BREAKING CHANGE**: Moved HTTP endpoint registration from `init()` to `SetOnTrigger()`
@@ -92,8 +105,9 @@
     - No conflicts between multiple pipelines with same webhook path
     - Consistent pattern with cron trigger (setup in SetOnTrigger)
     - Resources allocated only when needed
-  - Added `path` field to `WebhookStep` struct
+  - Added `path` and `stopChan` fields to `WebhookStep` struct
   - HTTP handler registration happens when pipeline enters trigger mode
+  - Handler checks stopChan before processing requests
 
 ### Webhook Integration Fix (2025-10-14)
 - **File**: `steps/webhook.go`
