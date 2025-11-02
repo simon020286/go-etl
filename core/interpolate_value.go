@@ -22,18 +22,21 @@ func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 	state.mu.RLock()
 
 	for stepName, outputs := range state.Results {
-		for outName, data := range outputs {
-			if outName == "default" {
+		// If there's only one output and it's "default", use the value directly
+		// Otherwise, create a map of all outputs
+		if len(outputs) == 1 {
+			if data, ok := outputs["default"]; ok {
 				ctx[stepName] = data.Value
-			} else {
-				// ctx[stepName+"."+outName] = data.Value
-				if ctx[stepName] == nil {
-					ctx[stepName] = make(map[string]any)
-				}
-				stepCtx, _ := ctx[stepName].(map[string]any)
-				stepCtx[outName] = data.Value
+				continue
 			}
 		}
+
+		// Multiple outputs or non-default single output: create a map
+		stepCtx := make(map[string]any)
+		for outName, data := range outputs {
+			stepCtx[outName] = data.Value
+		}
+		ctx[stepName] = stepCtx
 	}
 	state.mu.RUnlock()
 

@@ -9,7 +9,11 @@
 ## Pending Features
 
 ### High Priority
-- [ ] Implement basic scheduler for recurring pipeline execution (cron-like functionality)
+- [x] Implement basic scheduler for recurring pipeline execution (cron-like functionality)
+  - ✅ Created `steps/cron.go` with cron trigger implementation
+  - ✅ Supports `@every <duration>` format (e.g., `@every 10s`, `@every 5m`)
+  - ✅ Multiple independent cron triggers can run in same pipeline
+  - ✅ Example pipelines in `examples/cron_pipeline.yml` and `examples/cron_advanced.yml`
 - [ ] Create pipeline logs streaming endpoint and UI
 - [ ] Implement resource management and concurrent execution limits
 
@@ -57,9 +61,29 @@
 - [ ] Pipeline composition and sub-pipelines
 - [ ] Dynamic pipeline generation from templates
 
-## Recent Changes (2025-10-14)
+## Recent Changes
 
-### Webhook Integration Fix
+### Cron Scheduler Implementation (2025-11-02)
+
+- **File**: `steps/cron.go`
+  - Implemented `CronStep` as a trigger type
+  - Supports `@every <duration>` syntax (e.g., `@every 10s`, `@every 1h30m`)
+  - Supports simple duration format (e.g., `5m`, `1h`, `30s`)
+  - Uses Go's `time.Ticker` for reliable scheduling
+  - Provides timestamp and schedule info to triggered pipelines
+  - Graceful shutdown support with `Stop()` method
+
+- **Examples Created**:
+  - `examples/cron_pipeline.yml`: Simple example with 10-second interval
+  - `examples/cron_advanced.yml`: Complex example with multiple cron triggers (health check + backup)
+
+- **Architecture Notes**:
+  - Follows same Trigger interface pattern as webhook step
+  - Integrates seamlessly with existing pipeline trigger system
+  - Multiple cron triggers can coexist in same pipeline
+  - Each trigger fires independently and creates new pipeline execution
+
+### Webhook Integration Fix (2025-10-14)
 - **File**: `steps/webhook.go`
   - Added `.Methods(strings.ToUpper(method))` to route registration
   - Removed redundant manual method checking

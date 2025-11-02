@@ -1,0 +1,39 @@
+steps:
+  # Cron trigger that fires every 30 seconds
+  - name: health_check_trigger
+    type: cron
+    config:
+      schedule: "@every 30s"
+
+  # Simulate a health check by printing status
+  - name: check_system
+    type: stdout
+    inputs: ["health_check_trigger"]
+    config:
+      value: "ctx.health_check_trigger.timestamp"
+
+  # Another cron trigger that fires every minute
+  - name: backup_trigger
+    type: cron
+    config:
+      schedule: "@every 1m"
+
+  # Simulate backup operation
+  - name: run_backup
+    type: stdout
+    inputs: ["backup_trigger"]
+    config:
+      value: "ctx.backup_trigger.timestamp"
+
+  # Delay to simulate backup taking some time
+  - name: backup_delay
+    type: delay
+    inputs: ["run_backup"]
+    config:
+      ms: 2000
+
+  - name: backup_complete
+    type: stdout
+    inputs: ["backup_delay"]
+    config:
+      value: "'Backup completed successfully'"

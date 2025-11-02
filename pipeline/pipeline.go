@@ -80,8 +80,6 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 		p.state = &core.PipelineState{Results: make(map[string]map[string]*core.Data), Logger: logger}
 	}
 
-	// core.StartWebServer()
-
 	if len(p.triggers) > 0 {
 		logger.Info("Found", slog.Int("triggers", len(p.triggers)))
 		p.RunFromTriggers(ctx)
@@ -92,9 +90,19 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 	var wg sync.WaitGroup
 	mu := sync.Mutex{}
 
-	// Create done channels
+	// Create done channels for steps
 	for _, step := range p.steps {
 		done[step.Name()] = make(chan struct{})
+	}
+
+	// Create and close done channels for pre-populated state (e.g., triggers)
+	// This allows steps that depend on triggers to proceed immediately
+	for stepName := range p.state.Results {
+		if _, exists := done[stepName]; !exists {
+			ch := make(chan struct{})
+			close(ch)
+			done[stepName] = ch
+		}
 	}
 
 	exec := func(step core.Step) {
@@ -152,20 +160,29 @@ func (p *Pipeline) RunFromTriggers(ctx context.Context) {
 	// wg := sync.WaitGroup{}
 	// wg.Add(1)
 	for _, trigger := range p.triggers {
-		slog.Info("Trigger", "name", trigger.Name())
-		trigger.SetOnTrigger(func(data map[string]*core.Data) {
+		// Capture the trigger variable for the closure
+		t := trigger
+		slog.Info("Trigger", "name", t.Name())
+		t.SetOnTrigger(func(data map[string]*core.Data) {
 			newP := Pipeline{
-				steps: p.steps,
+				steps:  p.steps,
+				inputs: p.inputs,
 				state: &core.PipelineState{
 					Results: map[string]map[string]*core.Data{
-						trigger.Name(): data,
+						t.Name(): data,
 					},
+					Logger: p.state.Logger,
 				},
 			}
 
 			go func() {
-				_ = newP.Run(context.Background(), p.state.Logger)
-				slog.Info("Pipe line ended", slog.String("trigger", trigger.Name()))
+				err := newP.Run(context.Background(), p.state.Logger)
+				if err != nil {
+					slog.Error("Pipeline execution failed",
+						slog.String("trigger", t.Name()),
+						slog.Any("error", err))
+				}
+				slog.Debug("Pipeline execution completed", slog.String("trigger", t.Name()))
 			}()
 		})
 	}

@@ -382,24 +382,6 @@ func (psm *PipelineStateManager) executePipeline(runningPipeline *RunningPipelin
 	var finalState string
 	var errorMsg string
 
-	// Check if pipeline has triggers (webhook pipelines should remain active)
-	// if runningPipeline.Pipeline != nil && psm.pipelineHasTriggers(runningPipeline.Pipeline) {
-	// 	fmt.Printf("[DEBUG] executePipeline: Pipeline has triggers, starting trigger-based execution\n")
-
-	// 	// For trigger-based pipelines, run indefinitely until cancelled
-	// 	pipelineInstance := runningPipeline.Pipeline
-	// 	pipelineInstance.OnChange = func(event core.ChangeEvent) {
-	// 		psm.logExecutionEvent(runningPipeline.Execution.ID, event)
-	// 	}
-
-	// 	// Don't call core.StartWebServer() since we have our own APIServer
-	// 	// Instead, manually call RunFromTriggers without starting web server
-	// 	psm.runTriggersWithoutWebServer(pipelineInstance, runningPipeline.Context)
-
-	// 	// Pipeline was stopped/cancelled
-	// 	finalState = StateStopped
-	// 	errorMsg = "Pipeline execution was stopped"
-	// } else {
 	fmt.Printf("[DEBUG] executePipeline: Running pipeline without triggers\n")
 
 	// For non-trigger pipelines, run once and complete
@@ -416,7 +398,6 @@ func (psm *PipelineStateManager) executePipeline(runningPipeline *RunningPipelin
 		// Fallback for nil pipeline
 		finalState = StateCompleted
 	}
-	// }
 
 	duration := time.Since(runningPipeline.StartTime)
 	durationMs := int(duration.Milliseconds())

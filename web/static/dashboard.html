@@ -463,8 +463,11 @@
                 const executions = await executionsResp.json();
                 const running = await runningResp.json();
 
+                executions.data = executions.data || [];
+                running.data = running.data || [];
+
                 document.getElementById('totalPipelines').textContent = pipelines.success ? pipelines.data.length : '0';
-                document.getElementById('runningPipelines').textContent = running.success ? (running.data ? running.data.length : 0) : '0';
+                document.getElementById('runningPipelines').textContent = running.success ? running.data.length : '0';
                 document.getElementById('totalExecutions').textContent = executions.success ? executions.data.length : '0';
 
                 const completed = executions.success ?
