@@ -83,6 +83,18 @@
   - Multiple cron triggers can coexist in same pipeline
   - Each trigger fires independently and creates new pipeline execution
 
+### Webhook Refactoring - Lazy HTTP Registration (2025-11-02)
+- **File**: `steps/webhook.go`
+  - **BREAKING CHANGE**: Moved HTTP endpoint registration from `init()` to `SetOnTrigger()`
+  - Endpoints are now registered only when pipeline actually runs
+  - Benefits:
+    - No memory leak if pipeline is loaded but never executed
+    - No conflicts between multiple pipelines with same webhook path
+    - Consistent pattern with cron trigger (setup in SetOnTrigger)
+    - Resources allocated only when needed
+  - Added `path` field to `WebhookStep` struct
+  - HTTP handler registration happens when pipeline enters trigger mode
+
 ### Webhook Integration Fix (2025-10-14)
 - **File**: `steps/webhook.go`
   - Added `.Methods(strings.ToUpper(method))` to route registration
