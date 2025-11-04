@@ -88,67 +88,67 @@ func (psm *PipelineStateManager) emitStateEvent(event StateEvent) {
 
 // StartPipeline starts a pipeline execution
 func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, triggerData string) (*Execution, error) {
-	fmt.Printf("[DEBUG] StartPipeline: Starting pipeline %d with trigger %s\n", pipelineID, triggerType)
+	slog.Debug("StartPipeline: Starting pipeline", "pipeline_id", pipelineID, "trigger", triggerType)
 
 	// Check if pipeline is already running
-	fmt.Printf("[DEBUG] StartPipeline: Checking if pipeline is already running\n")
+	slog.Debug("StartPipeline: Checking if pipeline is already running")
 	psm.mu.RLock()
 	if _, isRunning := psm.runningPipelines[pipelineID]; isRunning {
 		psm.mu.RUnlock()
-		fmt.Printf("[DEBUG] StartPipeline: Pipeline is already running, returning error\n")
+		slog.Debug("StartPipeline: Pipeline is already running, returning error")
 		return nil, fmt.Errorf("pipeline %d is already running", pipelineID)
 	}
 	psm.mu.RUnlock()
-	fmt.Printf("[DEBUG] StartPipeline: Pipeline not running, continuing\n")
+	slog.Debug("StartPipeline: Pipeline not running, continuing")
 
 	// Get pipeline from database
-	fmt.Printf("[DEBUG] StartPipeline: Getting pipeline from database\n")
+	slog.Debug("StartPipeline: Getting pipeline from database")
 	pipelineRecord, err := psm.pipelineManager.GetPipeline(pipelineID)
 	if err != nil {
-		fmt.Printf("[DEBUG] StartPipeline: Failed to get pipeline: %v\n", err)
+		slog.Debug("StartPipeline: Failed to get pipeline", "error", err)
 		return nil, fmt.Errorf("failed to get pipeline: %w", err)
 	}
-	fmt.Printf("[DEBUG] StartPipeline: Got pipeline record: %s\n", pipelineRecord.Name)
+	slog.Debug("StartPipeline: Got pipeline record", "name", pipelineRecord.Name)
 
-	fmt.Printf("[DEBUG] StartPipeline: Checking if pipeline is enabled\n")
+	slog.Debug("StartPipeline: Checking if pipeline is enabled")
 	if !pipelineRecord.Enabled {
-		fmt.Printf("[DEBUG] StartPipeline: Pipeline is disabled, returning error\n")
+		slog.Debug("StartPipeline: Pipeline is disabled, returning error")
 		return nil, fmt.Errorf("pipeline %d is disabled", pipelineID)
 	}
-	fmt.Printf("[DEBUG] StartPipeline: Pipeline is enabled, continuing\n")
+	slog.Debug("StartPipeline: Pipeline is enabled, continuing")
 
 	// Load pipeline from YAML configuration
-	fmt.Printf("[DEBUG] StartPipeline: Loading pipeline from YAML\n")
+	slog.Debug("StartPipeline: Loading pipeline from YAML")
 	pipelineInstance, err := pipeline.LoadPipelineFromYAML(pipelineRecord.ConfigYAML)
 	if err != nil {
-		fmt.Printf("[DEBUG] StartPipeline: Failed to load pipeline YAML: %v\n", err)
+		slog.Debug("StartPipeline: Failed to load pipeline YAML", "error", err)
 		return nil, fmt.Errorf("failed to load pipeline configuration: %w", err)
 	}
-	fmt.Printf("[DEBUG] StartPipeline: Pipeline loaded successfully\n")
+	slog.Debug("StartPipeline: Pipeline loaded successfully")
 
 	// Create execution record
-	fmt.Printf("[DEBUG] StartPipeline: Creating execution record\n")
+	slog.Debug("StartPipeline: Creating execution record")
 	execution, err := psm.createExecution(pipelineID, triggerType, triggerData)
 	if err != nil {
-		fmt.Printf("[DEBUG] StartPipeline: Failed to create execution: %v\n", err)
+		slog.Debug("StartPipeline: Failed to create execution", "error", err)
 		return nil, fmt.Errorf("failed to create execution record: %w", err)
 	}
-	fmt.Printf("[DEBUG] StartPipeline: Created execution with ID %d\n", execution.ID)
+	slog.Debug("StartPipeline: Created execution", "execution_id", execution.ID)
 
 	// Update pipeline state to RUNNING
-	fmt.Printf("[DEBUG] StartPipeline: Updating pipeline state to RUNNING\n")
+	slog.Debug("StartPipeline: Updating pipeline state to RUNNING")
 	oldState := pipelineRecord.State
 	err = psm.pipelineManager.UpdatePipelineState(pipelineID, StateRunning)
 	if err != nil {
-		fmt.Printf("[DEBUG] StartPipeline: Failed to update pipeline state: %v\n", err)
+		slog.Debug("StartPipeline: Failed to update pipeline state", "error", err)
 		// Clean up execution record
 		psm.updateExecution(execution.ID, StateError, nil, err.Error())
 		return nil, fmt.Errorf("failed to update pipeline state: %w", err)
 	}
-	fmt.Printf("[DEBUG] StartPipeline: Pipeline state updated successfully\n")
+	slog.Debug("StartPipeline: Pipeline state updated successfully")
 
 	// Create running pipeline context
-	fmt.Printf("[DEBUG] StartPipeline: Creating running pipeline context\n")
+	slog.Debug("StartPipeline: Creating running pipeline context")
 	ctx, cancel := context.WithCancel(context.Background())
 	runningPipeline := &RunningPipeline{
 		ID:         pipelineID,
@@ -159,7 +159,7 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 		StartTime:  time.Now(),
 		Status:     StateRunning,
 	}
-	fmt.Printf("[DEBUG] StartPipeline: Created running pipeline struct\n")
+	slog.Debug("StartPipeline: Created running pipeline struct")
 
 	// Set up event handler for pipeline execution logging
 	pipelineInstance.OnChange = func(event core.ChangeEvent) {
@@ -167,14 +167,14 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 	}
 
 	// Register running pipeline
-	fmt.Printf("[DEBUG] StartPipeline: Registering running pipeline\n")
+	slog.Debug("StartPipeline: Registering running pipeline")
 	psm.mu.Lock()
 	psm.runningPipelines[pipelineID] = runningPipeline
 	psm.mu.Unlock()
-	fmt.Printf("[DEBUG] StartPipeline: Running pipeline registered\n")
+	slog.Debug("StartPipeline: Running pipeline registered")
 
 	// Emit state change event
-	fmt.Printf("[DEBUG] StartPipeline: Emitting state change event\n")
+	slog.Debug("StartPipeline: Emitting state change event")
 	psm.emitStateEvent(StateEvent{
 		PipelineID:   pipelineID,
 		PipelineName: pipelineRecord.Name,
@@ -183,13 +183,13 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 		Timestamp:    time.Now(),
 		ExecutionID:  &execution.ID,
 	})
-	fmt.Printf("[DEBUG] StartPipeline: State change event emitted\n")
+	slog.Debug("StartPipeline: State change event emitted")
 
 	// Start pipeline execution in goroutine
-	fmt.Printf("[DEBUG] StartPipeline: Starting pipeline execution in goroutine\n")
+	slog.Debug("StartPipeline: Starting pipeline execution in goroutine")
 	go psm.executePipeline(runningPipeline, pipelineRecord)
 
-	fmt.Printf("[DEBUG] StartPipeline: Returning execution, pipeline started successfully\n")
+	slog.Debug("StartPipeline: Returning execution, pipeline started successfully")
 	return execution, nil
 }
 
@@ -382,7 +382,7 @@ func (psm *PipelineStateManager) executePipeline(runningPipeline *RunningPipelin
 	var finalState string
 	var errorMsg string
 
-	fmt.Printf("[DEBUG] executePipeline: Running pipeline without triggers\n")
+	slog.Debug("executePipeline: Running pipeline without triggers")
 
 	// For non-trigger pipelines, run once and complete
 	if runningPipeline.Pipeline != nil {
@@ -408,7 +408,7 @@ func (psm *PipelineStateManager) executePipeline(runningPipeline *RunningPipelin
 	// Update pipeline state in database
 	err := psm.pipelineManager.UpdatePipelineState(runningPipeline.ID, finalState)
 	if err != nil {
-		fmt.Printf("[ERROR] executePipeline: Failed to update pipeline state to %s: %v\n", finalState, err)
+		slog.Error("executePipeline: Failed to update pipeline state", "state", finalState, "error", err)
 	}
 
 	// Emit final state change event

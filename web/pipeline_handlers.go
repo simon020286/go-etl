@@ -239,15 +239,15 @@ func (s *APIServer) handleGetPipelineStatus(w http.ResponseWriter, r *http.Reque
 
 // Pipeline control handlers
 func (s *APIServer) handleStartPipeline(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("[DEBUG] handleStartPipeline: Handler called\n")
+	s.logger.Debug("handleStartPipeline: Handler called")
 
 	id, err := s.extractID(r)
 	if err != nil {
-		fmt.Printf("[DEBUG] handleStartPipeline: Failed to extract ID: %v\n", err)
+		s.logger.Debug("handleStartPipeline: Failed to extract ID", "error", err)
 		s.sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	fmt.Printf("[DEBUG] handleStartPipeline: Extracted pipeline ID: %d\n", id)
+	s.logger.Debug("handleStartPipeline: Extracted pipeline ID", "id", id)
 
 	// Parse optional request body for trigger data
 	type StartRequest struct {

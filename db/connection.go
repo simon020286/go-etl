@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -67,7 +68,7 @@ func initDatabase(config *Config) (*sql.DB, error) {
 	if config.SeedData {
 		if err := SeedData(db); err != nil {
 			// Don't fail if seeding fails, just log it
-			fmt.Printf("Warning: failed to seed data: %v\n", err)
+			slog.Warn("Failed to seed data", "error", err)
 		}
 	}
 
