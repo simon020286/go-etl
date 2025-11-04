@@ -2,7 +2,6 @@ package web
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -49,10 +48,10 @@ func StartServer(logger *slog.Logger) {
 		logger.Error("Failed to restore running pipelines", "error", err)
 	}
 
-	fmt.Println("Starting server on :8080")
-	fmt.Println("API endpoints available at: http://localhost:8080/api/v1/")
-	fmt.Println("WebSocket endpoint: ws://localhost:8080/ws")
-	fmt.Println("Health check: http://localhost:8080/api/v1/health")
+	logger.Info("Starting server on :8080")
+	logger.Info("API endpoints available at: http://localhost:8080/api/v1/")
+	logger.Info("WebSocket endpoint: ws://localhost:8080/ws")
+	logger.Info("Health check: http://localhost:8080/api/v1/health")
 
 	// Start server directly with our router
 	if err := http.ListenAndServe(":8080", router); err != nil {
