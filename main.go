@@ -15,7 +15,7 @@ import (
 
 func main() {
 	webFlag := flag.Bool("web", false, "Start web server")
-	logFlag := flag.String("log", "debug", "Set log level (debug, info, warn, error)")
+	logFlag := flag.String("log", "warn", "Set log level (debug, info, warn, error)")
 	fileFlag := flag.String("file", "", "Path to pipeline YAML file")
 
 	flag.Parse()
