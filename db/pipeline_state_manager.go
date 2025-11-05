@@ -19,6 +19,7 @@ type PipelineStateManager struct {
 	runningPipelines map[int]*RunningPipeline
 	mu               sync.RWMutex
 	eventListeners   []StateEventListener
+	stepListeners    []StepEventListener
 }
 
 // RunningPipeline tracks an active pipeline execution
@@ -45,6 +46,18 @@ type StateEvent struct {
 	Error        string                `json:"error,omitempty"`
 }
 
+// StepExecutionEvent represents a step-level execution event
+type StepExecutionEvent struct {
+	PipelineID   int                   `json:"pipeline_id"`
+	PipelineName string                `json:"pipeline_name"`
+	ExecutionID  int                   `json:"execution_id"`
+	StepName     string                `json:"step_name"`
+	Status       string                `json:"status"` // "running", "completed", "error"
+	Timestamp    time.Time             `json:"timestamp"`
+	Data         map[string]*core.Data `json:"data,omitempty"`
+	Error        string                `json:"error,omitempty"`
+}
+
 // StateEventListener defines the interface for state event listeners
 type StateEventListener interface {
 	OnStateChange(event StateEvent)
@@ -57,6 +70,18 @@ func (f StateEventListenerFunc) OnStateChange(event StateEvent) {
 	f(event)
 }
 
+// StepEventListener defines the interface for step-level event listeners
+type StepEventListener interface {
+	OnStepEvent(event StepExecutionEvent)
+}
+
+// StepEventListenerFunc is a function adapter for StepEventListener
+type StepEventListenerFunc func(event StepExecutionEvent)
+
+func (f StepEventListenerFunc) OnStepEvent(event StepExecutionEvent) {
+	f(event)
+}
+
 // NewPipelineStateManager creates a new pipeline state manager
 func NewPipelineStateManager(db *sql.DB, pipelineManager *PipelineManager) *PipelineStateManager {
 	return &PipelineStateManager{
@@ -64,6 +89,7 @@ func NewPipelineStateManager(db *sql.DB, pipelineManager *PipelineManager) *Pipe
 		pipelineManager:  pipelineManager,
 		runningPipelines: make(map[int]*RunningPipeline),
 		eventListeners:   make([]StateEventListener, 0),
+		stepListeners:    make([]StepEventListener, 0),
 	}
 }
 
@@ -72,6 +98,13 @@ func (psm *PipelineStateManager) AddStateListener(listener StateEventListener) {
 	psm.mu.Lock()
 	defer psm.mu.Unlock()
 	psm.eventListeners = append(psm.eventListeners, listener)
+}
+
+// AddStepListener adds a listener for step execution events
+func (psm *PipelineStateManager) AddStepListener(listener StepEventListener) {
+	psm.mu.Lock()
+	defer psm.mu.Unlock()
+	psm.stepListeners = append(psm.stepListeners, listener)
 }
 
 // emitStateEvent emits a state change event to all listeners
@@ -83,6 +116,18 @@ func (psm *PipelineStateManager) emitStateEvent(event StateEvent) {
 
 	for _, listener := range listeners {
 		go listener.OnStateChange(event)
+	}
+}
+
+// emitStepEvent emits a step execution event to all listeners
+func (psm *PipelineStateManager) emitStepEvent(event StepExecutionEvent) {
+	psm.mu.RLock()
+	stepListeners := make([]StepEventListener, len(psm.stepListeners))
+	copy(stepListeners, psm.stepListeners)
+	psm.mu.RUnlock()
+
+	for _, listener := range stepListeners {
+		go listener.OnStepEvent(event)
 	}
 }
 
@@ -161,9 +206,31 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 	}
 	slog.Debug("StartPipeline: Created running pipeline struct")
 
-	// Set up event handler for pipeline execution logging
+	// Set up event handler for pipeline execution logging and event broadcasting
 	pipelineInstance.OnChange = func(event core.ChangeEvent) {
 		psm.logExecutionEvent(execution.ID, event)
+
+		// Emit step execution event to WebSocket listeners
+		var status string
+		var stepData map[string]*core.Data
+
+		switch event.Type {
+		case core.ChangeEventTypeStart:
+			status = "running"
+		case core.ChangeEventTypeEnd:
+			status = "completed"
+			stepData = event.Data
+		}
+
+		psm.emitStepEvent(StepExecutionEvent{
+			PipelineID:   pipelineID,
+			PipelineName: pipelineRecord.Name,
+			ExecutionID:  execution.ID,
+			StepName:     event.StepName,
+			Status:       status,
+			Timestamp:    time.Now(),
+			Data:         stepData,
+		})
 	}
 
 	// Register running pipeline

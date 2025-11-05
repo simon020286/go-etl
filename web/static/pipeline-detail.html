@@ -165,6 +165,40 @@
             border-radius: 4px;
             border: 2px solid #ddd;
         }
+
+        /* Real-time execution indicator */
+        .execution-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: #fff3cd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            color: #856404;
+        }
+        .execution-indicator.active {
+            background: #d4edda;
+            color: #155724;
+        }
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: #ffc107;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        .pulse-dot.active {
+            background: #28a745;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+        @keyframes flowAnimation {
+            0% { stroke-dashoffset: 10; }
+            100% { stroke-dashoffset: 0; }
+        }
         .loading {
             text-align: center;
             padding: 3rem;
@@ -207,7 +241,13 @@
 <body>
     <div class="header">
         <div class="header-content">
-            <h1 id="pipelineName">📊 Pipeline Details</h1>
+            <div>
+                <h1 id="pipelineName">📊 Pipeline Details</h1>
+                <div class="execution-indicator" id="wsIndicator" style="margin-top: 0.5rem;">
+                    <span class="pulse-dot"></span>
+                    <span>Connecting to real-time updates...</span>
+                </div>
+            </div>
             <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
         </div>
     </div>
@@ -299,6 +339,8 @@
         let cy;
         let pipelineData;
         let pipelineConfig;
+        let ws;
+        let stepStates = {}; // Track execution state of each step
 
         // Get pipeline ID from URL
         const urlParams = new URLSearchParams(window.location.search);
@@ -308,6 +350,236 @@
             showError('No pipeline ID specified');
         } else {
             loadPipeline(pipelineId);
+            initializeWebSocket();
+        }
+
+        // Initialize WebSocket connection for real-time updates
+        function initializeWebSocket() {
+            const wsUrl = `ws://${window.location.host}/ws`;
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function() {
+                console.log('WebSocket connected');
+                updateWSIndicator(true, 'Connected - Watching for execution events');
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const message = JSON.parse(event.data);
+                    console.log('WebSocket message:', message);
+                    handleWebSocketMessage(message);
+                } catch (error) {
+                    console.error('Failed to parse WebSocket message:', error);
+                }
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                updateWSIndicator(false, 'Connection error');
+            };
+
+            ws.onclose = function() {
+                console.log('WebSocket closed, attempting to reconnect...');
+                updateWSIndicator(false, 'Disconnected - Reconnecting...');
+                setTimeout(initializeWebSocket, 5000);
+            };
+        }
+
+        // Handle incoming WebSocket messages
+        function handleWebSocketMessage(message) {
+            if (!pipelineId) return;
+
+            // Handle step execution events
+            if (message.type === 'step_execution' && message.data.pipeline_id === parseInt(pipelineId)) {
+                updateStepState(message.data);
+            }
+
+            // Handle pipeline state changes
+            if (message.type === 'pipeline_state' && message.data.pipeline_id === parseInt(pipelineId)) {
+                updatePipelineState(message.data);
+            }
+        }
+
+        // Update WebSocket connection indicator
+        function updateWSIndicator(connected, text) {
+            const indicator = document.getElementById('wsIndicator');
+            const dot = indicator.querySelector('.pulse-dot');
+            const span = indicator.querySelector('span');
+
+            if (connected) {
+                indicator.classList.add('active');
+                dot.classList.add('active');
+            } else {
+                indicator.classList.remove('active');
+                dot.classList.remove('active');
+            }
+            span.textContent = text;
+        }
+
+        // Update step state in the graph
+        function updateStepState(stepEvent) {
+            if (!cy) return;
+
+            const stepName = stepEvent.step_name;
+            const status = stepEvent.status;
+
+            // Store step state
+            stepStates[stepName] = {
+                status: status,
+                timestamp: stepEvent.timestamp,
+                data: stepEvent.data
+            };
+
+            // Update node visualization
+            const node = cy.getElementById(stepName);
+            if (node.length > 0) {
+                // Update node based on status
+                if (status === 'running') {
+                    node.style({
+                        'border-width': 5,
+                        'border-color': '#ffc107',
+                        'border-style': 'solid'
+                    });
+                    // Animate running state
+                    animateNode(node);
+                    updateWSIndicator(true, `Executing: ${stepName}`);
+                } else if (status === 'completed') {
+                    node.style({
+                        'border-width': 5,
+                        'border-color': '#28a745',
+                        'border-style': 'solid',
+                        'opacity': 1
+                    });
+                    // Flash completion
+                    flashNode(node, '#28a745');
+                } else if (status === 'error') {
+                    node.style({
+                        'border-width': 5,
+                        'border-color': '#dc3545',
+                        'border-style': 'solid'
+                    });
+                    flashNode(node, '#dc3545');
+                }
+
+                // Animate edges from this node
+                if (status === 'completed') {
+                    animateEdgesFrom(node);
+                }
+            }
+        }
+
+        // Animate a node (pulsing effect)
+        function animateNode(node) {
+            let scale = 1;
+            let growing = true;
+            const interval = setInterval(() => {
+                if (growing) {
+                    scale += 0.05;
+                    if (scale >= 1.2) growing = false;
+                } else {
+                    scale -= 0.05;
+                    if (scale <= 1) growing = true;
+                }
+
+                // Check if step is still running
+                const stepName = node.id();
+                if (!stepStates[stepName] || stepStates[stepName].status !== 'running') {
+                    clearInterval(interval);
+                    node.style({ 'width': '60px', 'height': '60px' });
+                    return;
+                }
+
+                const size = 60 * scale;
+                node.style({ 'width': `${size}px`, 'height': `${size}px` });
+            }, 100);
+        }
+
+        // Flash a node with a color
+        function flashNode(node, color) {
+            let count = 0;
+            const interval = setInterval(() => {
+                node.style({ 'border-color': count % 2 === 0 ? color : '#fff' });
+                count++;
+                if (count >= 6) {
+                    clearInterval(interval);
+                    node.style({ 'border-color': color });
+                }
+            }, 150);
+        }
+
+        // Animate edges from a completed node
+        function animateEdgesFrom(node) {
+            const edges = node.connectedEdges().filter(edge => edge.source().id() === node.id());
+            edges.forEach(edge => {
+                edge.style({
+                    'line-color': '#28a745',
+                    'target-arrow-color': '#28a745',
+                    'width': 5
+                });
+                // Animate flow
+                let opacity = 0;
+                let growing = true;
+                const interval = setInterval(() => {
+                    if (growing) {
+                        opacity += 0.1;
+                        if (opacity >= 1) {
+                            growing = false;
+                            clearInterval(interval);
+                            // Reset edge after animation
+                            setTimeout(() => {
+                                edge.style({
+                                    'line-color': '#95a5a6',
+                                    'target-arrow-color': '#95a5a6',
+                                    'width': 3
+                                });
+                            }, 500);
+                        }
+                    }
+                    edge.style({ 'opacity': opacity });
+                }, 50);
+            });
+        }
+
+        // Update pipeline state
+        function updatePipelineState(stateEvent) {
+            // Update pipeline status badge
+            document.getElementById('infoStatus').innerHTML =
+                `<span class="status-badge status-${stateEvent.new_state.toLowerCase()}">${stateEvent.new_state}</span>`;
+
+            // Update indicator
+            if (stateEvent.new_state === 'RUNNING') {
+                updateWSIndicator(true, 'Pipeline Executing...');
+            } else if (stateEvent.new_state === 'COMPLETED') {
+                updateWSIndicator(true, 'Pipeline Completed');
+                // Reset step states after a delay
+                setTimeout(() => {
+                    resetGraphStates();
+                }, 3000);
+            } else if (stateEvent.new_state === 'ERROR') {
+                updateWSIndicator(true, 'Pipeline Failed');
+            }
+        }
+
+        // Reset all graph states
+        function resetGraphStates() {
+            if (!cy) return;
+            stepStates = {};
+            cy.nodes().forEach(node => {
+                node.style({
+                    'border-width': 3,
+                    'border-color': '#fff',
+                    'width': '60px',
+                    'height': '60px',
+                    'opacity': 1
+                });
+            });
+            cy.edges().forEach(edge => {
+                edge.style({
+                    'line-color': '#95a5a6',
+                    'target-arrow-color': '#95a5a6',
+                    'width': 3
+                });
+            });
         }
 
         // Load pipeline data
