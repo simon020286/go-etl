@@ -550,7 +550,7 @@
         }
 
         function viewPipeline(id) {
-            window.open(`/api/v1/pipelines/${id}`, '_blank');
+            window.location.href = `/pipeline?id=${id}`;
         }
 
         function showCreatePipeline() {
