@@ -37,6 +37,11 @@ func StartServer(logger *slog.Logger) {
 		http.ServeFile(w, r, "./web/static/dashboard.html")
 	})
 
+	// Pipeline detail endpoint - serve the pipeline-detail.html file
+	router.HandleFunc("/pipeline", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./web/static/pipeline-detail.html")
+	})
+
 	// Static files under /static/ prefix
 	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./web/static/"))))
 

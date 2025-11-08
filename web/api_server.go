@@ -68,7 +68,23 @@ func NewAPIServer(logger *slog.Logger) (*APIServer, error) {
 	// Register router for webhook access
 	GetWebhookRegistry().SetRouter(server.router)
 
+	// Register as listener for pipeline state and step events
+	server.registerEventListeners()
+
 	return server, nil
+}
+
+// registerEventListeners registers the API server to listen to pipeline and step events
+func (s *APIServer) registerEventListeners() {
+	// Listen to pipeline state changes
+	s.manager.PipelineState().AddStateListener(db.StateEventListenerFunc(func(event db.StateEvent) {
+		s.BroadcastMessage("pipeline_state", event)
+	}))
+
+	// Listen to step execution events
+	s.manager.PipelineState().AddStepListener(db.StepEventListenerFunc(func(event db.StepExecutionEvent) {
+		s.BroadcastMessage("step_execution", event)
+	}))
 }
 
 // setupRoutes configures all API routes

@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pipeline Details - Go-ETL</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8f9fa;
+        }
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            font-size: 1.5rem;
+            margin: 0;
+        }
+        .back-btn {
+            background: #34495e;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .back-btn:hover {
+            background: #415b76;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+        .info-panel {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .info-label {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-bottom: 0.25rem;
+        }
+        .info-value {
+            font-weight: 500;
+            color: #2c3e50;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status-created { background: #e3f2fd; color: #1976d2; }
+        .status-running { background: #e8f5e8; color: #2e7d32; }
+        .status-completed { background: #f3e5f5; color: #7b1fa2; }
+        .status-error { background: #ffebee; color: #c62828; }
+        .status-paused { background: #fff3e0; color: #ef6c00; }
+        .status-stopped { background: #eceff1; color: #455a64; }
+
+        /* Main layout - two columns */
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        /* Left column - graph */
+        .graph-panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+            height: fit-content;
+        }
+        .graph-header {
+            background: #f8f9fa;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .graph-header h2 {
+            margin: 0;
+            font-size: 1.25rem;
+            color: #2c3e50;
+        }
+        .graph-controls {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        .btn-secondary {
+            background: #6c757d;
+        }
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+        .btn-success {
+            background: #28a745;
+        }
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+        .btn-danger {
+            background: #dc3545;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+        #cy {
+            width: 100%;
+            height: 500px;
+            background: #fafafa;
+        }
+        .legend {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid #e9ecef;
+            background: #f8f9fa;
+        }
+        .legend-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #2c3e50;
+            font-size: 0.9rem;
+        }
+        .legend-items {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+        }
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            border: 2px solid #ddd;
+        }
+
+        /* Right column - details */
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        .details-panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+        }
+        .details-panel h3 {
+            margin: 0 0 1rem 0;
+            color: #2c3e50;
+            font-size: 1.1rem;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 0.5rem;
+        }
+        .detail-section {
+            margin-bottom: 1.5rem;
+        }
+        .detail-section:last-child {
+            margin-bottom: 0;
+        }
+        .detail-label {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-bottom: 0.25rem;
+            font-weight: 500;
+        }
+        .detail-value {
+            color: #2c3e50;
+            font-size: 0.95rem;
+        }
+        .config-display {
+            background: #f8f9fa;
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-top: 0.5rem;
+            font-family: monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .execution-data {
+            background: #f8f9fa;
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-top: 0.5rem;
+            font-family: monospace;
+            font-size: 0.85rem;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .no-data {
+            color: #6c757d;
+            font-style: italic;
+            font-size: 0.9rem;
+        }
+        .pipeline-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            .side-panel {
+                order: 2;
+            }
+        }
+
+        /* Real-time execution indicator */
+        .execution-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: #fff3cd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            color: #856404;
+        }
+        .execution-indicator.active {
+            background: #d4edda;
+            color: #155724;
+        }
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: #ffc107;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        .pulse-dot.active {
+            background: #28a745;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+        @keyframes flowAnimation {
+            0% { stroke-dashoffset: 10; }
+            100% { stroke-dashoffset: 0; }
+        }
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: #6c757d;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <div>
+                <h1 id="pipelineName">📊 Pipeline Details</h1>
+                <div class="execution-indicator" id="wsIndicator" style="margin-top: 0.5rem;">
+                    <span class="pulse-dot"></span>
+                    <span>Connecting to real-time updates...</span>
+                </div>
+            </div>
+            <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="loadingIndicator" class="loading">
+            <p>Loading pipeline details...</p>
+        </div>
+
+        <div id="errorMessage" style="display: none;"></div>
+
+        <div id="content" style="display: none;">
+            <!-- Info Panel -->
+            <div class="info-panel">
+                <h2>Pipeline Information</h2>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Name</span>
+                        <span class="info-value" id="infoName">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Status</span>
+                        <span id="infoStatus">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Enabled</span>
+                        <span class="info-value" id="infoEnabled">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Created</span>
+                        <span class="info-value" id="infoCreated">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Last Updated</span>
+                        <span class="info-value" id="infoUpdated">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Total Steps</span>
+                        <span class="info-value" id="infoSteps">-</span>
+                    </div>
+                </div>
+                <div style="margin-top: 1rem;">
+                    <span class="info-label">Description</span>
+                    <p class="info-value" id="infoDescription" style="margin-top: 0.5rem;">-</p>
+                </div>
+            </div>
+
+            <!-- Main Content: Graph + Side Panel -->
+            <div class="main-content">
+                <!-- Left Column: Graph -->
+                <div class="graph-panel">
+                    <div class="graph-header">
+                        <h2>Pipeline Flow</h2>
+                        <div class="graph-controls">
+                            <button class="btn btn-secondary" onclick="resetZoom()">Reset</button>
+                            <button class="btn btn-secondary" onclick="fitGraph()">Fit</button>
+                        </div>
+                    </div>
+                    <div id="cy"></div>
+                    <div class="legend">
+                        <div class="legend-title">Step Types</div>
+                        <div class="legend-items" id="legendItems"></div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Side Panel -->
+                <div class="side-panel">
+                    <!-- Pipeline Controls -->
+                    <div class="details-panel">
+                        <h3>Pipeline Controls</h3>
+                        <div class="pipeline-controls" id="pipelineControls">
+                            <button class="btn btn-success" id="btnStart" onclick="startPipeline()" disabled>
+                                ▶️ Start Pipeline
+                            </button>
+                            <button class="btn btn-warning" id="btnPause" onclick="pausePipeline()" disabled>
+                                ⏸️ Pause Pipeline
+                            </button>
+                            <button class="btn btn-success" id="btnResume" onclick="resumePipeline()" disabled>
+                                ▶️ Resume Pipeline
+                            </button>
+                            <button class="btn btn-danger" id="btnStop" onclick="stopPipeline()" disabled>
+                                ⏹️ Stop Pipeline
+                            </button>
+                            <button class="btn" onclick="downloadYAML()">
+                                ⬇️ Download YAML
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Step Details -->
+                    <div class="details-panel" id="stepDetailsPanel">
+                        <h3>Step Details</h3>
+                        <div id="stepDetailsContent">
+                            <p class="no-data">Click on a step to view details</p>
+                        </div>
+                    </div>
+
+                    <!-- Last Execution -->
+                    <div class="details-panel">
+                        <h3>Last Execution</h3>
+                        <div id="lastExecutionContent">
+                            <p class="no-data">No execution data available</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let cy;
+        let pipelineData;
+        let pipelineConfig;
+        let ws;
+        let stepStates = {}; // Track execution state of each step
+
+        // Get pipeline ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const pipelineId = urlParams.get('id');
+
+        if (!pipelineId) {
+            showError('No pipeline ID specified');
+        } else {
+            loadPipeline(pipelineId);
+            initializeWebSocket();
+        }
+
+        // Initialize WebSocket connection for real-time updates
+        function initializeWebSocket() {
+            const wsUrl = `ws://${window.location.host}/ws`;
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function() {
+                console.log('WebSocket connected');
+                updateWSIndicator(true, 'Connected - Watching for execution events');
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const message = JSON.parse(event.data);
+                    console.log('WebSocket message:', message);
+                    handleWebSocketMessage(message);
+                } catch (error) {
+                    console.error('Failed to parse WebSocket message:', error);
+                }
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                updateWSIndicator(false, 'Connection error');
+            };
+
+            ws.onclose = function() {
+                console.log('WebSocket closed, attempting to reconnect...');
+                updateWSIndicator(false, 'Disconnected - Reconnecting...');
+                setTimeout(initializeWebSocket, 5000);
+            };
+        }
+
+        // Handle incoming WebSocket messages
+        function handleWebSocketMessage(message) {
+            if (!pipelineId) return;
+
+            // Handle step execution events
+            if (message.type === 'step_execution' && message.data.pipeline_id === parseInt(pipelineId)) {
+                updateStepState(message.data);
+            }
+
+            // Handle pipeline state changes
+            if (message.type === 'pipeline_state' && message.data.pipeline_id === parseInt(pipelineId)) {
+                updatePipelineState(message.data);
+            }
+        }
+
+        // Update WebSocket connection indicator
+        function updateWSIndicator(connected, text) {
+            const indicator = document.getElementById('wsIndicator');
+            const dot = indicator.querySelector('.pulse-dot');
+            const span = indicator.querySelector('span');
+
+            if (connected) {
+                indicator.classList.add('active');
+                dot.classList.add('active');
+            } else {
+                indicator.classList.remove('active');
+                dot.classList.remove('active');
+            }
+            span.textContent = text;
+        }
+
+        // Update step state in the graph
+        function updateStepState(stepEvent) {
+            if (!cy) return;
+
+            const stepName = stepEvent.step_name;
+            const status = stepEvent.status;
+
+            // Store step state
+            stepStates[stepName] = {
+                status: status,
+                timestamp: stepEvent.timestamp,
+                data: stepEvent.data
+            };
+
+            // Update node visualization
+            const node = cy.getElementById(stepName);
+            if (node.length > 0) {
+                // Update node based on status
+                if (status === 'running') {
+                    node.style({
+                        'border-width': 5,
+                        'border-color': '#ffc107',
+                        'border-style': 'solid'
+                    });
+                    // Animate running state
+                    animateNode(node);
+                    updateWSIndicator(true, `Executing: ${stepName}`);
+                } else if (status === 'completed') {
+                    node.style({
+                        'border-width': 5,
+                        'border-color': '#28a745',
+                        'border-style': 'solid',
+                        'opacity': 1
+                    });
+                    // Flash completion
+                    flashNode(node, '#28a745');
+                } else if (status === 'error') {
+                    node.style({
+                        'border-width': 5,
+                        'border-color': '#dc3545',
+                        'border-style': 'solid'
+                    });
+                    flashNode(node, '#dc3545');
+                }
+
+                // Animate edges from this node
+                if (status === 'completed') {
+                    animateEdgesFrom(node);
+                }
+            }
+        }
+
+        // Animate a node (pulsing effect)
+        function animateNode(node) {
+            let scale = 1;
+            let growing = true;
+            const interval = setInterval(() => {
+                if (growing) {
+                    scale += 0.05;
+                    if (scale >= 1.2) growing = false;
+                } else {
+                    scale -= 0.05;
+                    if (scale <= 1) growing = true;
+                }
+
+                // Check if step is still running
+                const stepName = node.id();
+                if (!stepStates[stepName] || stepStates[stepName].status !== 'running') {
+                    clearInterval(interval);
+                    node.style({ 'width': '60px', 'height': '60px' });
+                    return;
+                }
+
+                const size = 60 * scale;
+                node.style({ 'width': `${size}px`, 'height': `${size}px` });
+            }, 100);
+        }
+
+        // Flash a node with a color
+        function flashNode(node, color) {
+            let count = 0;
+            const interval = setInterval(() => {
+                node.style({ 'border-color': count % 2 === 0 ? color : '#fff' });
+                count++;
+                if (count >= 6) {
+                    clearInterval(interval);
+                    node.style({ 'border-color': color });
+                }
+            }, 150);
+        }
+
+        // Animate edges from a completed node
+        function animateEdgesFrom(node) {
+            const edges = node.connectedEdges().filter(edge => edge.source().id() === node.id());
+            edges.forEach(edge => {
+                edge.style({
+                    'line-color': '#28a745',
+                    'target-arrow-color': '#28a745',
+                    'width': 5
+                });
+                // Animate flow
+                let opacity = 0;
+                let growing = true;
+                const interval = setInterval(() => {
+                    if (growing) {
+                        opacity += 0.1;
+                        if (opacity >= 1) {
+                            growing = false;
+                            clearInterval(interval);
+                            // Reset edge after animation
+                            setTimeout(() => {
+                                edge.style({
+                                    'line-color': '#95a5a6',
+                                    'target-arrow-color': '#95a5a6',
+                                    'width': 3
+                                });
+                            }, 500);
+                        }
+                    }
+                    edge.style({ 'opacity': opacity });
+                }, 50);
+            });
+        }
+
+        // Update pipeline state
+        function updatePipelineState(stateEvent) {
+            // Update pipeline status badge
+            document.getElementById('infoStatus').innerHTML =
+                `<span class="status-badge status-${stateEvent.new_state.toLowerCase()}">${stateEvent.new_state}</span>`;
+
+            // Update pipeline data state
+            if (pipelineData) {
+                pipelineData.state = stateEvent.new_state;
+                updateControlButtons();
+            }
+
+            // Update indicator
+            if (stateEvent.new_state === 'RUNNING') {
+                updateWSIndicator(true, 'Pipeline Executing...');
+            } else if (stateEvent.new_state === 'COMPLETED') {
+                updateWSIndicator(true, 'Pipeline Completed');
+                // Reset step states and reload execution after a delay
+                setTimeout(() => {
+                    resetGraphStates();
+                    loadLastExecution();
+                }, 3000);
+            } else if (stateEvent.new_state === 'ERROR') {
+                updateWSIndicator(true, 'Pipeline Failed');
+                setTimeout(() => {
+                    loadLastExecution();
+                }, 1000);
+            }
+        }
+
+        // Reset all graph states
+        function resetGraphStates() {
+            if (!cy) return;
+            stepStates = {};
+            cy.nodes().forEach(node => {
+                node.style({
+                    'border-width': 3,
+                    'border-color': '#fff',
+                    'width': '60px',
+                    'height': '60px',
+                    'opacity': 1
+                });
+            });
+            cy.edges().forEach(edge => {
+                edge.style({
+                    'line-color': '#95a5a6',
+                    'target-arrow-color': '#95a5a6',
+                    'width': 3
+                });
+            });
+        }
+
+        // Load pipeline data
+        async function loadPipeline(id) {
+            try {
+                const response = await fetch(`/api/v1/pipelines/${id}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to load pipeline');
+                }
+
+                pipelineData = result.data;
+
+                // Parse YAML configuration
+                try {
+                    pipelineConfig = jsyaml.load(pipelineData.config_yaml);
+                } catch (yamlError) {
+                    throw new Error('Failed to parse pipeline YAML: ' + yamlError.message);
+                }
+
+                displayPipelineInfo();
+                renderGraph();
+
+                document.getElementById('loadingIndicator').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+            } catch (error) {
+                showError('Error loading pipeline: ' + error.message);
+            }
+        }
+
+        // Display pipeline information
+        function displayPipelineInfo() {
+            document.getElementById('pipelineName').textContent = `📊 ${pipelineData.name}`;
+            document.getElementById('infoName').textContent = pipelineData.name;
+            document.getElementById('infoStatus').innerHTML =
+                `<span class="status-badge status-${pipelineData.state.toLowerCase()}">${pipelineData.state}</span>`;
+            document.getElementById('infoEnabled').textContent = pipelineData.enabled ? 'Yes' : 'No';
+            document.getElementById('infoCreated').textContent = new Date(pipelineData.created_at).toLocaleString();
+            document.getElementById('infoUpdated').textContent = new Date(pipelineData.updated_at).toLocaleString();
+            document.getElementById('infoSteps').textContent = pipelineConfig.steps ? pipelineConfig.steps.length : 0;
+            document.getElementById('infoDescription').textContent = pipelineData.description || 'No description provided';
+        }
+
+        // Render graph using Cytoscape
+        function renderGraph() {
+            if (!pipelineConfig.steps || pipelineConfig.steps.length === 0) {
+                document.getElementById('cy').innerHTML = '<div class="loading">No steps defined in this pipeline</div>';
+                return;
+            }
+
+            // Build nodes and edges
+            const elements = [];
+            const stepTypes = new Set();
+
+            // Add nodes
+            pipelineConfig.steps.forEach(step => {
+                stepTypes.add(step.type);
+                elements.push({
+                    data: {
+                        id: step.name,
+                        label: step.name,
+                        type: step.type,
+                        config: step.config,
+                        inputs: step.inputs || []
+                    }
+                });
+            });
+
+            // Add edges based on inputs
+            pipelineConfig.steps.forEach(step => {
+                if (step.inputs && Array.isArray(step.inputs)) {
+                    step.inputs.forEach(input => {
+                        // Handle input format like "stepname" or "stepname:output"
+                        const sourceStep = input.split(':')[0];
+                        elements.push({
+                            data: {
+                                id: `${sourceStep}-${step.name}`,
+                                source: sourceStep,
+                                target: step.name
+                            }
+                        });
+                    });
+                }
+            });
+
+            // Color map for different step types
+            const typeColors = {
+                'webhook': '#e74c3c',
+                'cron': '#9b59b6',
+                'stdout': '#3498db',
+                'map': '#2ecc71',
+                'foreach': '#f39c12',
+                'if': '#1abc9c',
+                'delay': '#95a5a6',
+                'http_client': '#34495e',
+                'sqlite': '#16a085',
+                'default': '#7f8c8d'
+            };
+
+            // Initialize Cytoscape
+            cy = cytoscape({
+                container: document.getElementById('cy'),
+                elements: elements,
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'label': 'data(label)',
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                            'background-color': function(ele) {
+                                const type = ele.data('type');
+                                return typeColors[type] || typeColors['default'];
+                            },
+                            'color': '#fff',
+                            'text-outline-color': function(ele) {
+                                const type = ele.data('type');
+                                return typeColors[type] || typeColors['default'];
+                            },
+                            'text-outline-width': 2,
+                            'width': '60px',
+                            'height': '60px',
+                            'font-size': '12px',
+                            'font-weight': 'bold',
+                            'border-width': 3,
+                            'border-color': '#fff',
+                            'box-shadow': '0 2px 4px rgba(0,0,0,0.2)'
+                        }
+                    },
+                    {
+                        selector: 'edge',
+                        style: {
+                            'width': 3,
+                            'line-color': '#95a5a6',
+                            'target-arrow-color': '#95a5a6',
+                            'target-arrow-shape': 'triangle',
+                            'curve-style': 'bezier',
+                            'arrow-scale': 1.5
+                        }
+                    },
+                    {
+                        selector: 'node:selected',
+                        style: {
+                            'border-width': 5,
+                            'border-color': '#ffd700'
+                        }
+                    }
+                ],
+                layout: {
+                    name: 'breadthfirst',
+                    directed: true,
+                    padding: 50,
+                    spacingFactor: 1.5,
+                    nodeDimensionsIncludeLabels: true,
+                    avoidOverlap: true,
+                    fit: true,
+                    animate: false
+                }
+            });
+
+            // Center and fit the graph
+            cy.fit();
+            cy.center();
+
+            // Add click handler for nodes
+            cy.on('tap', 'node', function(evt) {
+                const node = evt.target;
+                showStepDetails(node.data());
+            });
+
+            // Update legend and controls
+            updateLegend(stepTypes, typeColors);
+            updateControlButtons();
+            loadLastExecution();
+        }
+
+        // Update legend with step types
+        function updateLegend(stepTypes, typeColors) {
+            const legendContainer = document.getElementById('legendItems');
+            legendContainer.innerHTML = '';
+
+            stepTypes.forEach(type => {
+                const color = typeColors[type] || typeColors['default'];
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+                item.innerHTML = `
+                    <div class="legend-color" style="background: ${color};"></div>
+                    <span>${type}</span>
+                `;
+                legendContainer.appendChild(item);
+            });
+        }
+
+        // Show step details in side panel
+        function showStepDetails(nodeData) {
+            const content = document.getElementById('stepDetailsContent');
+            content.innerHTML = `
+                <div class="detail-section">
+                    <div class="detail-label">Step Name</div>
+                    <div class="detail-value">${nodeData.label}</div>
+                </div>
+                <div class="detail-section">
+                    <div class="detail-label">Type</div>
+                    <div class="detail-value">${nodeData.type}</div>
+                </div>
+                <div class="detail-section">
+                    <div class="detail-label">Dependencies</div>
+                    <div class="detail-value">${nodeData.inputs.length > 0 ? nodeData.inputs.join(', ') : 'None'}</div>
+                </div>
+                <div class="detail-section">
+                    <div class="detail-label">Configuration</div>
+                    <div class="config-display">${JSON.stringify(nodeData.config, null, 2)}</div>
+                </div>
+                ${stepStates[nodeData.id] ? `
+                    <div class="detail-section">
+                        <div class="detail-label">Last Execution Status</div>
+                        <div class="detail-value">
+                            <span class="status-badge status-${stepStates[nodeData.id].status}">${stepStates[nodeData.id].status}</span>
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        // Update control buttons based on pipeline state
+        function updateControlButtons() {
+            if (!pipelineData) return;
+
+            const state = pipelineData.state;
+            const enabled = pipelineData.enabled;
+
+            const btnStart = document.getElementById('btnStart');
+            const btnPause = document.getElementById('btnPause');
+            const btnResume = document.getElementById('btnResume');
+            const btnStop = document.getElementById('btnStop');
+
+            // Reset all
+            btnStart.disabled = true;
+            btnPause.disabled = true;
+            btnResume.disabled = true;
+            btnStop.disabled = true;
+
+            if (state === 'RUNNING') {
+                btnPause.disabled = false;
+                btnStop.disabled = false;
+            } else if (state === 'PAUSED') {
+                btnResume.disabled = false;
+                btnStop.disabled = false;
+            } else if (enabled && (state === 'CREATED' || state === 'COMPLETED' || state === 'ERROR' || state === 'STOPPED')) {
+                btnStart.disabled = false;
+            }
+        }
+
+        // Pipeline control functions
+        async function startPipeline() {
+            if (!pipelineId) return;
+            try {
+                const response = await fetch(`/api/v1/pipelines/${pipelineId}/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ trigger_type: 'manual' })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    updateWSIndicator(true, 'Pipeline started successfully');
+                } else {
+                    alert('Failed to start pipeline: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error starting pipeline: ' + error.message);
+            }
+        }
+
+        async function stopPipeline() {
+            if (!pipelineId) return;
+            try {
+                const response = await fetch(`/api/v1/pipelines/${pipelineId}/stop`, { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    updateWSIndicator(true, 'Pipeline stopped successfully');
+                } else {
+                    alert('Failed to stop pipeline: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error stopping pipeline: ' + error.message);
+            }
+        }
+
+        async function pausePipeline() {
+            if (!pipelineId) return;
+            try {
+                const response = await fetch(`/api/v1/pipelines/${pipelineId}/pause`, { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    updateWSIndicator(true, 'Pipeline paused successfully');
+                } else {
+                    alert('Failed to pause pipeline: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error pausing pipeline: ' + error.message);
+            }
+        }
+
+        async function resumePipeline() {
+            if (!pipelineId) return;
+            try {
+                const response = await fetch(`/api/v1/pipelines/${pipelineId}/resume`, { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    updateWSIndicator(true, 'Pipeline resumed successfully');
+                } else {
+                    alert('Failed to resume pipeline: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error resuming pipeline: ' + error.message);
+            }
+        }
+
+        // Load last execution data
+        async function loadLastExecution() {
+            if (!pipelineId) return;
+            try {
+                const response = await fetch(`/api/v1/executions?pipeline_id=${pipelineId}&limit=1`);
+                const result = await response.json();
+
+                const content = document.getElementById('lastExecutionContent');
+
+                if (result.success && result.data && result.data.length > 0) {
+                    const execution = result.data[0];
+                    content.innerHTML = `
+                        <div class="detail-section">
+                            <div class="detail-label">Execution ID</div>
+                            <div class="detail-value">#${execution.id}</div>
+                        </div>
+                        <div class="detail-section">
+                            <div class="detail-label">Status</div>
+                            <div class="detail-value">
+                                <span class="status-badge status-${execution.status.toLowerCase()}">${execution.status}</span>
+                            </div>
+                        </div>
+                        <div class="detail-section">
+                            <div class="detail-label">Started At</div>
+                            <div class="detail-value">${new Date(execution.started_at).toLocaleString()}</div>
+                        </div>
+                        ${execution.completed_at ? `
+                            <div class="detail-section">
+                                <div class="detail-label">Duration</div>
+                                <div class="detail-value">${execution.duration_ms}ms</div>
+                            </div>
+                        ` : ''}
+                        ${execution.error_message ? `
+                            <div class="detail-section">
+                                <div class="detail-label">Error</div>
+                                <div class="detail-value" style="color: #dc3545;">${execution.error_message}</div>
+                            </div>
+                        ` : ''}
+                        <div class="detail-section">
+                            <div class="detail-label">Trigger</div>
+                            <div class="detail-value">${execution.trigger_type || 'manual'}</div>
+                        </div>
+                    `;
+                } else {
+                    content.innerHTML = '<p class="no-data">No execution history available</p>';
+                }
+            } catch (error) {
+                console.error('Failed to load last execution:', error);
+                document.getElementById('lastExecutionContent').innerHTML = '<p class="no-data">Failed to load execution data</p>';
+            }
+        }
+
+        // Graph control functions
+        function resetZoom() {
+            if (cy) {
+                cy.zoom(1);
+                cy.center();
+            }
+        }
+
+        function fitGraph() {
+            if (cy) {
+                cy.fit();
+            }
+        }
+
+        function downloadYAML() {
+            if (!pipelineData) return;
+
+            const blob = new Blob([pipelineData.config_yaml], { type: 'text/yaml' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${pipelineData.name}.yml`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        // Error handling
+        function showError(message) {
+            document.getElementById('loadingIndicator').style.display = 'none';
+            document.getElementById('errorMessage').innerHTML = `<div class="error">${message}</div>`;
+            document.getElementById('errorMessage').style.display = 'block';
+        }
+    </script>
+</body>
+</html>
