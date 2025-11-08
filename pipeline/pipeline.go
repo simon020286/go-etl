@@ -173,6 +173,7 @@ func (p *Pipeline) RunFromTriggers(ctx context.Context) {
 					},
 					Logger: p.state.Logger,
 				},
+				OnChange: p.OnChange,
 			}
 
 			go func() {
