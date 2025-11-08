@@ -20,8 +20,38 @@ type CronStep struct {
 func (s *CronStep) Name() string { return s.name }
 
 func (s *CronStep) Run(ctx context.Context, state *core.PipelineState) (map[string]*core.Data, error) {
-	// This method is not used for cron triggers
-	return core.CreateDefaultResultData("Cron triggered"), nil
+	// Parse schedule
+	duration, err := parseCronExpression(s.schedule)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse cron expression: %w", err)
+	}
+
+	// Create ticker and wait for FIRST tick (one-shot mode)
+	ticker := time.NewTicker(duration)
+	defer ticker.Stop()
+
+	slog.Info("Cron step waiting for first tick",
+		slog.String("name", s.name),
+		slog.String("schedule", s.schedule),
+		slog.Duration("interval", duration))
+
+	select {
+	case t := <-ticker.C:
+		// First tick received - generate data
+		slog.Info("Cron step fired",
+			slog.String("name", s.name),
+			slog.Time("time", t))
+
+		timestampStr := t.Format(time.RFC3339)
+		return map[string]*core.Data{
+			"default":   {Value: timestampStr},
+			"timestamp": {Value: timestampStr},
+			"schedule":  {Value: s.schedule},
+			"unix":      {Value: t.Unix()},
+		}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (s *CronStep) SetOnTrigger(callback func(data map[string]*core.Data)) error {

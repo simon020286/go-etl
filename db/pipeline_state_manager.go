@@ -180,6 +180,15 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 	}
 	slog.Debug("StartPipeline: Created execution", "execution_id", execution.ID)
 
+	// Set pipeline state with execution ID
+	slog.Debug("StartPipeline: Setting pipeline state with execution ID")
+	pipelineInstance.SetState(&core.PipelineState{
+		Results:     make(map[string]map[string]*core.Data),
+		Logger:      slog.Default(),
+		ExecutionID: &execution.ID,
+	})
+	slog.Debug("StartPipeline: Pipeline state set with execution ID", "execution_id", execution.ID)
+
 	// Update pipeline state to RUNNING
 	slog.Debug("StartPipeline: Updating pipeline state to RUNNING")
 	oldState := pipelineRecord.State
@@ -231,6 +240,34 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 			Timestamp:    time.Now(),
 			Data:         stepData,
 		})
+	}
+
+	// Set up OnTriggerFire callback for continuous mode (root triggers)
+	pipelineInstance.OnTriggerFire = func(triggerName string, data map[string]*core.Data) (*core.PipelineState, error) {
+		slog.Info("Creating new execution for trigger fire",
+			slog.String("trigger", triggerName),
+			slog.Int("pipeline_id", pipelineID))
+
+		// Create new execution for this trigger fire
+		newExecution, err := psm.createExecution(pipelineID, triggerName, "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create execution for trigger: %w", err)
+		}
+
+		// Create new state with execution ID and trigger data
+		newState := &core.PipelineState{
+			Results: map[string]map[string]*core.Data{
+				triggerName: data,
+			},
+			Logger:      slog.Default(),
+			ExecutionID: &newExecution.ID,
+		}
+
+		slog.Info("Created new execution for trigger",
+			slog.String("trigger", triggerName),
+			slog.Int("execution_id", newExecution.ID))
+
+		return newState, nil
 	}
 
 	// Register running pipeline

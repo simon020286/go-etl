@@ -7,9 +7,10 @@ import (
 
 // PipelineState holds results of executed steps
 type PipelineState struct {
-	Results map[string]map[string]*Data
-	mu      sync.RWMutex
-	Logger  *slog.Logger
+	Results     map[string]map[string]*Data
+	mu          sync.RWMutex
+	Logger      *slog.Logger
+	ExecutionID *int // ID of the current execution (optional for backward compatibility)
 }
 
 func (ps *PipelineState) Get(stepName, outputName string) (*Data, bool) {

@@ -14,11 +14,12 @@ import (
 )
 
 type Pipeline struct {
-	steps    map[string]core.Step
-	triggers map[string]core.Trigger
-	inputs   map[string][]string
-	state    *core.PipelineState
-	OnChange func(event core.ChangeEvent)
+	steps         map[string]core.Step
+	triggers      map[string]core.Trigger
+	inputs        map[string][]string
+	state         *core.PipelineState
+	OnChange      func(event core.ChangeEvent)
+	OnTriggerFire func(triggerName string, data map[string]*core.Data) (*core.PipelineState, error) // NEW: callback to create new execution
 }
 
 func LoadPipelineFromFile(filePath string) (*Pipeline, error) {
@@ -77,26 +78,49 @@ func LoadPipeline(config PipelineConfig) (*Pipeline, error) {
 
 func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 	if p.state == nil {
-		p.state = &core.PipelineState{Results: make(map[string]map[string]*core.Data), Logger: logger}
+		p.state = &core.PipelineState{
+			Results: make(map[string]map[string]*core.Data),
+			Logger:  logger,
+			// ExecutionID set externally by PipelineStateManager
+		}
 	}
 
-	if len(p.triggers) > 0 {
-		logger.Info("Found", slog.Int("triggers", len(p.triggers)))
-		p.RunFromTriggers(ctx)
-		return nil
+	// Identify root triggers (without inputs)
+	rootTriggers := p.getRootTriggers()
+
+	if len(rootTriggers) > 0 {
+		// CONTINUOUS mode: root triggers create multiple executions
+		logger.Info("Running in continuous mode", slog.Int("root_triggers", len(rootTriggers)))
+		return p.runContinuous(ctx, logger, rootTriggers)
 	}
 
+	// ONE-SHOT mode: normal execution (triggers included as steps)
+	logger.Info("Running in one-shot mode", slog.Int("steps", len(p.steps)), slog.Int("mid_triggers", len(p.triggers)))
+	return p.runOnce(ctx, logger)
+}
+
+// runOnce executes the pipeline once, treating triggers as normal steps
+func (p *Pipeline) runOnce(ctx context.Context, logger *slog.Logger) error {
 	done := make(map[string]chan struct{})
 	var wg sync.WaitGroup
 	mu := sync.Mutex{}
 
-	// Create done channels for steps
-	for _, step := range p.steps {
-		done[step.Name()] = make(chan struct{})
+	// IMPORTANT: Consider triggers as normal steps
+	allSteps := make(map[string]core.Step)
+	for name, step := range p.steps {
+		allSteps[name] = step
+	}
+	// Add triggers as steps
+	for name, trigger := range p.triggers {
+		allSteps[name] = trigger.(core.Step) // Trigger implements Step interface
 	}
 
-	// Create and close done channels for pre-populated state (e.g., triggers)
-	// This allows steps that depend on triggers to proceed immediately
+	// Create done channels for all (steps + triggers)
+	for name := range allSteps {
+		done[name] = make(chan struct{})
+	}
+
+	// Pre-populate channels for existing state (e.g., trigger data from continuous mode)
 	for stepName := range p.state.Results {
 		if _, exists := done[stepName]; !exists {
 			ch := make(chan struct{})
@@ -105,9 +129,11 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 		}
 	}
 
+	// Step executor (same as existing code)
 	exec := func(step core.Step) {
 		defer wg.Done()
-		// Wait for all inputs
+
+		// Wait for dependencies
 		for _, input := range p.inputs[step.Name()] {
 			parts := strings.Split(input, ":")
 			stepName := parts[0]
@@ -120,30 +146,39 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 			mu.Lock()
 			if _, ok := p.state.Get(stepName, outputName); !ok {
 				mu.Unlock()
+				logger.Warn("Step dependency not satisfied",
+					slog.String("step", step.Name()),
+					slog.String("dependency", stepName))
 				return
 			}
 			mu.Unlock()
 		}
+
 		logger.Debug("Running step", slog.String("step", step.Name()))
 
 		if p.OnChange != nil {
 			p.OnChange(core.ChangeEvent{Type: core.ChangeEventTypeStart, StepName: step.Name()})
 		}
 
+		// EXECUTE STEP (triggers block here until fire if mid-pipeline)
 		outputs, err := step.Run(ctx, p.state)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Step %s failed: %v\n", step.Name(), err)
+			logger.Error("Step failed", slog.String("step", step.Name()), slog.Any("error", err))
 			return
 		}
+
 		p.state.Set(step.Name(), outputs)
 		close(done[step.Name()])
+
 		logger.Debug("Step completed", slog.String("step", step.Name()), slog.Any("output", outputs))
+
 		if p.OnChange != nil {
 			p.OnChange(core.ChangeEvent{Type: core.ChangeEventTypeEnd, StepName: step.Name(), Data: outputs})
 		}
 	}
 
-	for _, step := range p.steps {
+	// Launch all steps (including mid-pipeline triggers) concurrently
+	for _, step := range allSteps {
 		wg.Add(1)
 		go exec(step)
 	}
@@ -152,55 +187,94 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 	return nil
 }
 
-func (p *Pipeline) SetState(state *core.PipelineState) {
-	p.state = state
-}
+// runContinuous handles continuous mode for root triggers
+func (p *Pipeline) runContinuous(ctx context.Context, logger *slog.Logger, rootTriggers []core.Trigger) error {
+	// NOTE: This method is called only when there are root triggers (without input)
+	// Each trigger fire creates a NEW EXECUTION in the DB via OnTriggerFire callback
 
-func (p *Pipeline) RunFromTriggers(ctx context.Context) {
-	// wg := sync.WaitGroup{}
-	// wg.Add(1)
-	for _, trigger := range p.triggers {
-		// Capture the trigger variable for the closure
+	for _, trigger := range rootTriggers {
 		t := trigger
-		slog.Info("Trigger", "name", t.Name())
+		logger.Info("Setting up continuous trigger", slog.String("trigger", t.Name()))
+
 		t.SetOnTrigger(func(data map[string]*core.Data) {
-			newP := Pipeline{
-				steps:  p.steps,
-				inputs: p.inputs,
-				state: &core.PipelineState{
+			logger.Info("Trigger fired", slog.String("trigger", t.Name()))
+
+			var newState *core.PipelineState
+
+			// Use callback to create new execution if available
+			if p.OnTriggerFire != nil {
+				state, err := p.OnTriggerFire(t.Name(), data)
+				if err != nil {
+					logger.Error("Failed to create execution for trigger",
+						slog.String("trigger", t.Name()),
+						slog.Any("error", err))
+					return
+				}
+				newState = state
+			} else {
+				// Fallback: create state without execution ID (for backward compatibility)
+				newState = &core.PipelineState{
 					Results: map[string]map[string]*core.Data{
 						t.Name(): data,
 					},
-					Logger: p.state.Logger,
-				},
-				OnChange: p.OnChange,
+					Logger: logger,
+				}
 			}
 
+			// Save original state
+			origState := p.state
+			p.state = newState
+
 			go func() {
-				err := newP.Run(context.Background(), p.state.Logger)
+				err := p.runOnce(ctx, logger)
 				if err != nil {
-					slog.Error("Pipeline execution failed",
+					logger.Error("Trigger execution failed",
 						slog.String("trigger", t.Name()),
 						slog.Any("error", err))
 				}
-				slog.Debug("Pipeline execution completed", slog.String("trigger", t.Name()))
+
+				// Restore original state
+				p.state = origState
 			}()
 		})
 	}
-	slog.Info("Waiting for triggers")
-	// Wait for context cancellation
-	<-ctx.Done()
-	slog.Info("Pipeline cancelled, stopping trigger listeners")
 
-	// Stop all triggers
-	for _, trigger := range p.triggers {
+	logger.Info("Waiting for triggers", slog.Int("count", len(rootTriggers)))
+	<-ctx.Done()
+	logger.Info("Pipeline cancelled, stopping triggers")
+
+	for _, trigger := range rootTriggers {
 		if err := trigger.Stop(); err != nil {
-			slog.Error("Failed to stop trigger",
+			logger.Error("Failed to stop trigger",
 				slog.String("trigger", trigger.Name()),
 				slog.Any("error", err))
 		}
 	}
+
+	return nil
 }
+
+func (p *Pipeline) SetState(state *core.PipelineState) {
+	p.state = state
+}
+
+// isRootTrigger verifies if a trigger is at the beginning of the pipeline (no dependencies)
+func (p *Pipeline) isRootTrigger(triggerName string) bool {
+	inputs := p.inputs[triggerName]
+	return len(inputs) == 0
+}
+
+// getRootTriggers returns all triggers without dependencies
+func (p *Pipeline) getRootTriggers() []core.Trigger {
+	roots := []core.Trigger{}
+	for name, trigger := range p.triggers {
+		if p.isRootTrigger(name) {
+			roots = append(roots, trigger)
+		}
+	}
+	return roots
+}
+
 
 // GetTriggers returns the triggers map
 func (p *Pipeline) GetTriggers() map[string]core.Trigger {
