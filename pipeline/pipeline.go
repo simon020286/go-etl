@@ -100,19 +100,28 @@ func (p *Pipeline) Run(ctx context.Context, logger *slog.Logger) error {
 }
 
 // runOnce executes the pipeline once, treating triggers as normal steps
-func (p *Pipeline) runOnce(ctx context.Context, logger *slog.Logger) error {
+// excludeTriggers: list of trigger names to exclude from execution (e.g., root triggers already running)
+func (p *Pipeline) runOnce(ctx context.Context, logger *slog.Logger, excludeTriggers ...string) error {
 	done := make(map[string]chan struct{})
 	var wg sync.WaitGroup
 	mu := sync.Mutex{}
+
+	// Build exclusion set for fast lookup
+	excludeSet := make(map[string]bool)
+	for _, name := range excludeTriggers {
+		excludeSet[name] = true
+	}
 
 	// IMPORTANT: Consider triggers as normal steps
 	allSteps := make(map[string]core.Step)
 	for name, step := range p.steps {
 		allSteps[name] = step
 	}
-	// Add triggers as steps
+	// Add triggers as steps (excluding root triggers that are already running)
 	for name, trigger := range p.triggers {
-		allSteps[name] = trigger.(core.Step) // Trigger implements Step interface
+		if !excludeSet[name] {
+			allSteps[name] = trigger.(core.Step) // Trigger implements Step interface
+		}
 	}
 
 	// Create done channels for all (steps + triggers)
@@ -192,6 +201,12 @@ func (p *Pipeline) runContinuous(ctx context.Context, logger *slog.Logger, rootT
 	// NOTE: This method is called only when there are root triggers (without input)
 	// Each trigger fire creates a NEW EXECUTION in the DB via OnTriggerFire callback
 
+	// Collect root trigger names to exclude from runOnce execution
+	rootTriggerNames := make([]string, 0, len(rootTriggers))
+	for _, trigger := range rootTriggers {
+		rootTriggerNames = append(rootTriggerNames, trigger.Name())
+	}
+
 	for _, trigger := range rootTriggers {
 		t := trigger
 		logger.Info("Setting up continuous trigger", slog.String("trigger", t.Name()))
@@ -226,7 +241,8 @@ func (p *Pipeline) runContinuous(ctx context.Context, logger *slog.Logger, rootT
 			p.state = newState
 
 			go func() {
-				err := p.runOnce(ctx, logger)
+				// Exclude root triggers from execution (they're already running continuously)
+				err := p.runOnce(ctx, logger, rootTriggerNames...)
 				if err != nil {
 					logger.Error("Trigger execution failed",
 						slog.String("trigger", t.Name()),
