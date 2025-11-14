@@ -38,6 +38,14 @@ func (iv *InterpolateValue[T]) Resolve(state *PipelineState) (T, error) {
 		}
 		ctx[stepName] = stepCtx
 	}
+
+	// Add execution metadata if available
+	if state.ExecutionID != nil {
+		ctx["_execution"] = map[string]any{
+			"id": *state.ExecutionID,
+		}
+	}
+
 	state.mu.RUnlock()
 
 	var t T
