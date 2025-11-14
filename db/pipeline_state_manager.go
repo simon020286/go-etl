@@ -3,13 +3,17 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
-	"go-etl/core"
-	"go-etl/pipeline"
+	pipeline "github.com/simon020286/go-pipeline"
+	"github.com/simon020286/go-pipeline/models"
+	"github.com/simon020286/go-pipeline/pkg"
+	_ "github.com/simon020286/go-pipeline/steps"
+	"gopkg.in/yaml.v3"
 )
 
 // PipelineStateManager handles pipeline state transitions and execution tracking
@@ -22,10 +26,10 @@ type PipelineStateManager struct {
 	stepListeners    []StepEventListener
 }
 
-// RunningPipeline tracks an active pipeline execution
+// RunningPipeline tracks an active pipeline execution using the external go-pipeline library
 type RunningPipeline struct {
 	ID         int
-	Pipeline   *pipeline.Pipeline
+	Pipeline   pipeline.IPipeline // Using interface from external library
 	Execution  *Execution
 	Context    context.Context
 	CancelFunc context.CancelFunc
@@ -36,26 +40,26 @@ type RunningPipeline struct {
 
 // StateEvent represents a pipeline state change event
 type StateEvent struct {
-	PipelineID   int                   `json:"pipeline_id"`
-	PipelineName string                `json:"pipeline_name"`
-	OldState     string                `json:"old_state"`
-	NewState     string                `json:"new_state"`
-	Timestamp    time.Time             `json:"timestamp"`
-	ExecutionID  *int                  `json:"execution_id,omitempty"`
-	Data         map[string]*core.Data `json:"data,omitempty"`
-	Error        string                `json:"error,omitempty"`
+	PipelineID   int                    `json:"pipeline_id"`
+	PipelineName string                 `json:"pipeline_name"`
+	OldState     string                 `json:"old_state"`
+	NewState     string                 `json:"new_state"`
+	Timestamp    time.Time              `json:"timestamp"`
+	ExecutionID  *int                   `json:"execution_id,omitempty"`
+	Data         map[string]interface{} `json:"data,omitempty"`
+	Error        string                 `json:"error,omitempty"`
 }
 
 // StepExecutionEvent represents a step-level execution event
 type StepExecutionEvent struct {
-	PipelineID   int                   `json:"pipeline_id"`
-	PipelineName string                `json:"pipeline_name"`
-	ExecutionID  int                   `json:"execution_id"`
-	StepName     string                `json:"step_name"`
-	Status       string                `json:"status"` // "running", "completed", "error"
-	Timestamp    time.Time             `json:"timestamp"`
-	Data         map[string]*core.Data `json:"data,omitempty"`
-	Error        string                `json:"error,omitempty"`
+	PipelineID   int                    `json:"pipeline_id"`
+	PipelineName string                 `json:"pipeline_name"`
+	ExecutionID  int                    `json:"execution_id"`
+	StepName     string                 `json:"step_name"`
+	Status       string                 `json:"status"` // "running", "completed", "error"
+	Timestamp    time.Time              `json:"timestamp"`
+	Data         map[string]interface{} `json:"data,omitempty"`
+	Error        string                 `json:"error,omitempty"`
 }
 
 // StateEventListener defines the interface for state event listeners
@@ -131,78 +135,55 @@ func (psm *PipelineStateManager) emitStepEvent(event StepExecutionEvent) {
 	}
 }
 
-// StartPipeline starts a pipeline execution
+// StartPipeline starts a pipeline execution using the external go-pipeline library
 func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, triggerData string) (*Execution, error) {
 	slog.Debug("StartPipeline: Starting pipeline", "pipeline_id", pipelineID, "trigger", triggerType)
 
 	// Check if pipeline is already running
-	slog.Debug("StartPipeline: Checking if pipeline is already running")
 	psm.mu.RLock()
 	if _, isRunning := psm.runningPipelines[pipelineID]; isRunning {
 		psm.mu.RUnlock()
-		slog.Debug("StartPipeline: Pipeline is already running, returning error")
 		return nil, fmt.Errorf("pipeline %d is already running", pipelineID)
 	}
 	psm.mu.RUnlock()
-	slog.Debug("StartPipeline: Pipeline not running, continuing")
 
 	// Get pipeline from database
-	slog.Debug("StartPipeline: Getting pipeline from database")
 	pipelineRecord, err := psm.pipelineManager.GetPipeline(pipelineID)
 	if err != nil {
-		slog.Debug("StartPipeline: Failed to get pipeline", "error", err)
 		return nil, fmt.Errorf("failed to get pipeline: %w", err)
 	}
-	slog.Debug("StartPipeline: Got pipeline record", "name", pipelineRecord.Name)
 
-	slog.Debug("StartPipeline: Checking if pipeline is enabled")
 	if !pipelineRecord.Enabled {
-		slog.Debug("StartPipeline: Pipeline is disabled, returning error")
 		return nil, fmt.Errorf("pipeline %d is disabled", pipelineID)
 	}
-	slog.Debug("StartPipeline: Pipeline is enabled, continuing")
 
-	// Load pipeline from YAML configuration
-	slog.Debug("StartPipeline: Loading pipeline from YAML")
-	pipelineInstance, err := pipeline.LoadPipelineFromYAML(pipelineRecord.ConfigYAML)
-	if err != nil {
-		slog.Debug("StartPipeline: Failed to load pipeline YAML", "error", err)
-		return nil, fmt.Errorf("failed to load pipeline configuration: %w", err)
+	// Parse YAML configuration using the external library
+	var config pkg.PipelineConfig
+	if err := yaml.Unmarshal([]byte(pipelineRecord.ConfigYAML), &config); err != nil {
+		return nil, fmt.Errorf("failed to parse pipeline YAML: %w", err)
 	}
-	slog.Debug("StartPipeline: Pipeline loaded successfully")
+
+	// Build pipeline from config using the external library
+	pipelineInstance, err := pipeline.BuildFromConfig(&config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build pipeline: %w", err)
+	}
 
 	// Create execution record
-	slog.Debug("StartPipeline: Creating execution record")
 	execution, err := psm.createExecution(pipelineID, triggerType, triggerData)
 	if err != nil {
-		slog.Debug("StartPipeline: Failed to create execution", "error", err)
 		return nil, fmt.Errorf("failed to create execution record: %w", err)
 	}
-	slog.Debug("StartPipeline: Created execution", "execution_id", execution.ID)
-
-	// Set pipeline state with execution ID
-	slog.Debug("StartPipeline: Setting pipeline state with execution ID")
-	pipelineInstance.SetState(&core.PipelineState{
-		Results:     make(map[string]map[string]*core.Data),
-		Logger:      slog.Default(),
-		ExecutionID: &execution.ID,
-	})
-	slog.Debug("StartPipeline: Pipeline state set with execution ID", "execution_id", execution.ID)
 
 	// Update pipeline state to RUNNING
-	slog.Debug("StartPipeline: Updating pipeline state to RUNNING")
 	oldState := pipelineRecord.State
 	err = psm.pipelineManager.UpdatePipelineState(pipelineID, StateRunning)
 	if err != nil {
-		slog.Debug("StartPipeline: Failed to update pipeline state", "error", err)
-		// Clean up execution record
 		psm.updateExecution(execution.ID, StateError, nil, err.Error())
 		return nil, fmt.Errorf("failed to update pipeline state: %w", err)
 	}
-	slog.Debug("StartPipeline: Pipeline state updated successfully")
 
 	// Create running pipeline context
-	slog.Debug("StartPipeline: Creating running pipeline context")
 	ctx, cancel := context.WithCancel(context.Background())
 	runningPipeline := &RunningPipeline{
 		ID:         pipelineID,
@@ -213,72 +194,22 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 		StartTime:  time.Now(),
 		Status:     StateRunning,
 	}
-	slog.Debug("StartPipeline: Created running pipeline struct")
 
-	// Set up event handler for pipeline execution logging and event broadcasting
-	pipelineInstance.OnChange = func(event core.ChangeEvent) {
-		psm.logExecutionEvent(execution.ID, event)
-
-		// Emit step execution event to WebSocket listeners
-		var status string
-		var stepData map[string]*core.Data
-
-		switch event.Type {
-		case core.ChangeEventTypeStart:
-			status = "running"
-		case core.ChangeEventTypeEnd:
-			status = "completed"
-			stepData = event.Data
-		}
-
-		psm.emitStepEvent(StepExecutionEvent{
-			PipelineID:   pipelineID,
-			PipelineName: pipelineRecord.Name,
-			ExecutionID:  execution.ID,
-			StepName:     event.StepName,
-			Status:       status,
-			Timestamp:    time.Now(),
-			Data:         stepData,
-		})
+	// Add event listener to pipeline for execution logging
+	eventLogger := &pipelineExecutionLogger{
+		psm:          psm,
+		pipelineID:   pipelineID,
+		pipelineName: pipelineRecord.Name,
+		executionID:  execution.ID,
 	}
-
-	// Set up OnTriggerFire callback for continuous mode (root triggers)
-	pipelineInstance.OnTriggerFire = func(triggerName string, data map[string]*core.Data) (*core.PipelineState, error) {
-		slog.Info("Creating new execution for trigger fire",
-			slog.String("trigger", triggerName),
-			slog.Int("pipeline_id", pipelineID))
-
-		// Create new execution for this trigger fire
-		newExecution, err := psm.createExecution(pipelineID, triggerName, "")
-		if err != nil {
-			return nil, fmt.Errorf("failed to create execution for trigger: %w", err)
-		}
-
-		// Create new state with execution ID and trigger data
-		newState := &core.PipelineState{
-			Results: map[string]map[string]*core.Data{
-				triggerName: data,
-			},
-			Logger:      slog.Default(),
-			ExecutionID: &newExecution.ID,
-		}
-
-		slog.Info("Created new execution for trigger",
-			slog.String("trigger", triggerName),
-			slog.Int("execution_id", newExecution.ID))
-
-		return newState, nil
-	}
+	pipelineInstance.AddListener(eventLogger)
 
 	// Register running pipeline
-	slog.Debug("StartPipeline: Registering running pipeline")
 	psm.mu.Lock()
 	psm.runningPipelines[pipelineID] = runningPipeline
 	psm.mu.Unlock()
-	slog.Debug("StartPipeline: Running pipeline registered")
 
 	// Emit state change event
-	slog.Debug("StartPipeline: Emitting state change event")
 	psm.emitStateEvent(StateEvent{
 		PipelineID:   pipelineID,
 		PipelineName: pipelineRecord.Name,
@@ -287,19 +218,15 @@ func (psm *PipelineStateManager) StartPipeline(pipelineID int, triggerType, trig
 		Timestamp:    time.Now(),
 		ExecutionID:  &execution.ID,
 	})
-	slog.Debug("StartPipeline: State change event emitted")
 
 	// Start pipeline execution in goroutine
-	slog.Debug("StartPipeline: Starting pipeline execution in goroutine")
 	go psm.executePipeline(runningPipeline, pipelineRecord)
 
-	slog.Debug("StartPipeline: Returning execution, pipeline started successfully")
 	return execution, nil
 }
 
 // StopPipeline stops a running pipeline
 func (psm *PipelineStateManager) StopPipeline(pipelineID int) error {
-	// Get pipeline record to check current state
 	pipelineRecord, err := psm.pipelineManager.GetPipeline(pipelineID)
 	if err != nil {
 		return fmt.Errorf("failed to get pipeline: %w", err)
@@ -310,7 +237,7 @@ func (psm *PipelineStateManager) StopPipeline(pipelineID int) error {
 	psm.mu.RUnlock()
 
 	if exists {
-		// Pipeline is actually running in memory - cancel it
+		// Cancel the pipeline context
 		runningPipeline.CancelFunc()
 
 		// Update in-memory status
@@ -318,12 +245,10 @@ func (psm *PipelineStateManager) StopPipeline(pipelineID int) error {
 		runningPipeline.Status = StateStopped
 		runningPipeline.mu.Unlock()
 	} else if pipelineRecord.State != StateRunning && pipelineRecord.State != StatePaused {
-		// Pipeline is not running in DB either
 		return fmt.Errorf("pipeline %d is not running (current state: %s)", pipelineID, pipelineRecord.State)
 	}
-	// else: Pipeline is RUNNING/PAUSED in DB but not in memory - just update DB
 
-	// Update database state to STOPPED
+	// Update database state
 	oldState := pipelineRecord.State
 	err = psm.pipelineManager.UpdatePipelineState(pipelineID, StateStopped)
 	if err != nil {
@@ -339,12 +264,11 @@ func (psm *PipelineStateManager) StopPipeline(pipelineID int) error {
 		Timestamp:    time.Now(),
 	})
 
-	slog.Info("Pipeline stopped", slog.Int("pipeline_id", pipelineID), slog.String("was_in_memory", fmt.Sprintf("%v", exists)))
-
+	slog.Info("Pipeline stopped", "pipeline_id", pipelineID)
 	return nil
 }
 
-// PausePipeline pauses a running pipeline (implementation depends on pipeline engine capabilities)
+// PausePipeline pauses a running pipeline
 func (psm *PipelineStateManager) PausePipeline(pipelineID int) error {
 	psm.mu.RLock()
 	runningPipeline, exists := psm.runningPipelines[pipelineID]
@@ -354,12 +278,10 @@ func (psm *PipelineStateManager) PausePipeline(pipelineID int) error {
 		return fmt.Errorf("pipeline %d is not running", pipelineID)
 	}
 
-	// Update status to paused
 	runningPipeline.mu.Lock()
 	runningPipeline.Status = StatePaused
 	runningPipeline.mu.Unlock()
 
-	// Update database state
 	pipelineRecord, err := psm.pipelineManager.GetPipeline(pipelineID)
 	if err != nil {
 		return err
@@ -371,7 +293,6 @@ func (psm *PipelineStateManager) PausePipeline(pipelineID int) error {
 		return err
 	}
 
-	// Emit state change event
 	psm.emitStateEvent(StateEvent{
 		PipelineID:   pipelineID,
 		PipelineName: pipelineRecord.Name,
@@ -402,12 +323,10 @@ func (psm *PipelineStateManager) ResumePipeline(pipelineID int) error {
 		return fmt.Errorf("pipeline %d is not paused", pipelineID)
 	}
 
-	// Update status back to running
 	runningPipeline.mu.Lock()
 	runningPipeline.Status = StateRunning
 	runningPipeline.mu.Unlock()
 
-	// Update database state
 	pipelineRecord, err := psm.pipelineManager.GetPipeline(pipelineID)
 	if err != nil {
 		return err
@@ -418,7 +337,6 @@ func (psm *PipelineStateManager) ResumePipeline(pipelineID int) error {
 		return err
 	}
 
-	// Emit state change event
 	psm.emitStateEvent(StateEvent{
 		PipelineID:   pipelineID,
 		PipelineName: pipelineRecord.Name,
@@ -453,7 +371,6 @@ func (psm *PipelineStateManager) IsRunning(pipelineID int) bool {
 
 // GetPipelineStatus returns the current status of a pipeline
 func (psm *PipelineStateManager) GetPipelineStatus(pipelineID int) (string, error) {
-	// Check if running
 	psm.mu.RLock()
 	runningPipeline, isRunning := psm.runningPipelines[pipelineID]
 	psm.mu.RUnlock()
@@ -465,7 +382,6 @@ func (psm *PipelineStateManager) GetPipelineStatus(pipelineID int) (string, erro
 		return status, nil
 	}
 
-	// Get from database
 	pipelineRecord, err := psm.pipelineManager.GetPipeline(pipelineID)
 	if err != nil {
 		return "", err
@@ -474,10 +390,10 @@ func (psm *PipelineStateManager) GetPipelineStatus(pipelineID int) (string, erro
 	return pipelineRecord.State, nil
 }
 
-// executePipeline runs the actual pipeline execution
+// executePipeline runs the actual pipeline execution using the external library
 func (psm *PipelineStateManager) executePipeline(runningPipeline *RunningPipeline, pipelineRecord *Pipeline) {
 	defer func() {
-		// Clean up running pipeline
+		// Clean up running pipeline from memory
 		psm.mu.Lock()
 		delete(psm.runningPipelines, runningPipeline.ID)
 		psm.mu.Unlock()
@@ -486,21 +402,22 @@ func (psm *PipelineStateManager) executePipeline(runningPipeline *RunningPipelin
 	var finalState string
 	var errorMsg string
 
-	slog.Debug("executePipeline: Running pipeline without triggers")
+	// Start the pipeline using the external library
+	err := runningPipeline.Pipeline.Start(runningPipeline.Context)
+	if err != nil {
+		finalState = StateError
+		errorMsg = err.Error()
+		slog.Error("Pipeline start failed", "pipeline_id", runningPipeline.ID, "error", err)
+	} else {
+		// Wait for pipeline to complete
+		runningPipeline.Pipeline.Wait()
 
-	// For non-trigger pipelines, run once and complete
-	if runningPipeline.Pipeline != nil {
-		logger := slog.Default() // Get default logger
-		err := runningPipeline.Pipeline.Run(runningPipeline.Context, logger)
-		if err != nil {
-			finalState = StateError
-			errorMsg = err.Error()
+		// Check if context was cancelled (stopped by user)
+		if runningPipeline.Context.Err() != nil {
+			finalState = StateStopped
 		} else {
 			finalState = StateCompleted
 		}
-	} else {
-		// Fallback for nil pipeline
-		finalState = StateCompleted
 	}
 
 	duration := time.Since(runningPipeline.StartTime)
@@ -510,9 +427,9 @@ func (psm *PipelineStateManager) executePipeline(runningPipeline *RunningPipelin
 	psm.updateExecution(runningPipeline.Execution.ID, finalState, &durationMs, errorMsg)
 
 	// Update pipeline state in database
-	err := psm.pipelineManager.UpdatePipelineState(runningPipeline.ID, finalState)
+	err = psm.pipelineManager.UpdatePipelineState(runningPipeline.ID, finalState)
 	if err != nil {
-		slog.Error("executePipeline: Failed to update pipeline state", "state", finalState, "error", err)
+		slog.Error("Failed to update pipeline state", "state", finalState, "error", err)
 	}
 
 	// Emit final state change event
@@ -525,17 +442,17 @@ func (psm *PipelineStateManager) executePipeline(runningPipeline *RunningPipelin
 		ExecutionID:  &runningPipeline.Execution.ID,
 		Error:        errorMsg,
 	})
+
+	slog.Info("Pipeline execution completed", "pipeline_id", runningPipeline.ID, "state", finalState, "duration", duration)
 }
 
 // createExecution creates a new execution record
 func (psm *PipelineStateManager) createExecution(pipelineID int, triggerType, triggerData string) (*Execution, error) {
-	// Use simpler INSERT approach for SQLite compatibility
 	var triggerDataPtr *string
 	if triggerData != "" {
 		triggerDataPtr = &triggerData
 	}
 
-	// Insert execution record
 	insertQuery := `
 		INSERT INTO executions (pipeline_id, status, trigger_type, trigger_data, started_at)
 		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -551,7 +468,6 @@ func (psm *PipelineStateManager) createExecution(pipelineID int, triggerType, tr
 		return nil, fmt.Errorf("failed to get execution ID: %w", err)
 	}
 
-	// Get the created execution
 	selectQuery := `
 		SELECT id, pipeline_id, status, started_at, completed_at, duration_ms, error_message, trigger_type, trigger_data
 		FROM executions WHERE id = ?
@@ -592,7 +508,6 @@ func (psm *PipelineStateManager) updateExecution(executionID int, status string,
 func (psm *PipelineStateManager) RestoreRunningPipelines() error {
 	slog.Info("Restoring running pipelines from database")
 
-	// Query all pipelines with RUNNING or PAUSED state
 	query := `SELECT id, name, state FROM pipelines WHERE state IN (?, ?)`
 	rows, err := psm.db.Query(query, StateRunning, StatePaused)
 	if err != nil {
@@ -624,53 +539,139 @@ func (psm *PipelineStateManager) RestoreRunningPipelines() error {
 		return nil
 	}
 
-	slog.Info("Found pipelines to restore", slog.Int("count", len(pipelinesToRestore)))
+	slog.Info("Found pipelines to restore", "count", len(pipelinesToRestore))
 
 	// Restart each pipeline
 	for _, p := range pipelinesToRestore {
-		slog.Info("Restoring pipeline", slog.Int("id", p.ID), slog.String("name", p.Name), slog.String("state", p.State))
+		slog.Info("Restoring pipeline", "id", p.ID, "name", p.Name, "state", p.State)
 
-		// First set state to CREATED to allow StartPipeline to work
+		// Reset state to CREATED to allow StartPipeline to work
 		err := psm.pipelineManager.UpdatePipelineState(p.ID, StateCreated)
 		if err != nil {
-			slog.Error("Failed to reset pipeline state to IDLE", slog.Int("id", p.ID), slog.Any("error", err))
+			slog.Error("Failed to reset pipeline state", "id", p.ID, "error", err)
 			continue
 		}
 
 		// Start the pipeline
 		_, err = psm.StartPipeline(p.ID, "system", "restored_on_startup")
 		if err != nil {
-			slog.Error("Failed to restore pipeline", slog.Int("id", p.ID), slog.String("name", p.Name), slog.Any("error", err))
+			slog.Error("Failed to restore pipeline", "id", p.ID, "name", p.Name, "error", err)
 			continue
 		}
 
-		slog.Info("Pipeline restored successfully", slog.Int("id", p.ID), slog.String("name", p.Name))
+		slog.Info("Pipeline restored successfully", "id", p.ID, "name", p.Name)
 	}
 
 	return nil
 }
 
-// logExecutionEvent logs a step execution event
-func (psm *PipelineStateManager) logExecutionEvent(executionID int, event core.ChangeEvent) {
-	var stepName *string
-	if event.StepName != "" {
-		stepName = &event.StepName
+// logExecutionEvent logs an execution event to the database
+func (psm *PipelineStateManager) logExecutionEvent(executionID int, stepName, level, message string, data interface{}) {
+	var stepNamePtr *string
+	if stepName != "" {
+		stepNamePtr = &stepName
 	}
 
-	var data *string
-	if event.Data != nil {
-		// TODO: Serialize event.Data to JSON
-		jsonData := "{}" // Placeholder
-		data = &jsonData
+	var dataPtr *string
+	if data != nil {
+		jsonData, err := json.Marshal(data)
+		if err == nil {
+			dataStr := string(jsonData)
+			dataPtr = &dataStr
+		}
 	}
-
-	level := "info"
-	message := fmt.Sprintf("Step %s %s", event.StepName, event.Type)
 
 	query := `
 		INSERT INTO execution_logs (execution_id, step_name, level, message, data)
 		VALUES (?, ?, ?, ?, ?)
 	`
 
-	psm.db.Exec(query, executionID, stepName, level, message, data)
+	_, err := psm.db.Exec(query, executionID, stepNamePtr, level, message, dataPtr)
+	if err != nil {
+		slog.Error("Failed to log execution event", "error", err)
+	}
+}
+
+// pipelineExecutionLogger implements the EventListener interface from the external library
+type pipelineExecutionLogger struct {
+	psm          *PipelineStateManager
+	pipelineID   int
+	pipelineName string
+	executionID  int
+}
+
+func (l *pipelineExecutionLogger) OnEvent(event models.Event) {
+	switch event.Type {
+	case models.EventPipelineStarted:
+		mode := "unknown"
+		if m, ok := event.Data["mode"].(string); ok {
+			mode = m
+		}
+		l.psm.logExecutionEvent(l.executionID, "", "info", fmt.Sprintf("Pipeline started in %s mode", mode), nil)
+
+	case models.EventPipelineCompleted:
+		duration := time.Duration(0)
+		if d, ok := event.Data["duration"].(time.Duration); ok {
+			duration = d
+		}
+		l.psm.logExecutionEvent(l.executionID, "", "info", fmt.Sprintf("Pipeline completed in %v", duration), nil)
+
+	case models.EventPipelineError:
+		errMsg := "unknown error"
+		if e, ok := event.Data["error"].(string); ok {
+			errMsg = e
+		}
+		l.psm.logExecutionEvent(l.executionID, "", "error", fmt.Sprintf("Pipeline error: %s", errMsg), nil)
+
+	case models.EventStageOutput:
+		stageID := "unknown"
+		eventID := "unknown"
+		if s, ok := event.Data["stage_id"].(string); ok {
+			stageID = s
+		}
+		if e, ok := event.Data["event_id"].(string); ok {
+			eventID = e
+		}
+
+		output := event.Data["output"]
+		l.psm.logExecutionEvent(l.executionID, stageID, "info", fmt.Sprintf("Stage output (event: %s)", eventID), output)
+
+		// Emit step execution event for WebSocket clients
+		l.psm.emitStepEvent(StepExecutionEvent{
+			PipelineID:   l.pipelineID,
+			PipelineName: l.pipelineName,
+			ExecutionID:  l.executionID,
+			StepName:     stageID,
+			Status:       "completed",
+			Timestamp:    event.Timestamp,
+			Data:         map[string]interface{}{"output": output},
+		})
+
+	case models.EventStageError:
+		stageID := "unknown"
+		eventID := "unknown"
+		errMsg := "unknown error"
+		if s, ok := event.Data["stage_id"].(string); ok {
+			stageID = s
+		}
+		if e, ok := event.Data["event_id"].(string); ok {
+			eventID = e
+		}
+		if err, ok := event.Data["error"].(string); ok {
+			errMsg = err
+		}
+
+		l.psm.logExecutionEvent(l.executionID, stageID, "error", fmt.Sprintf("Stage error (event: %s): %s", eventID, errMsg), nil)
+
+		// Emit step execution event for WebSocket clients
+		l.psm.emitStepEvent(StepExecutionEvent{
+			PipelineID:   l.pipelineID,
+			PipelineName: l.pipelineName,
+			ExecutionID:  l.executionID,
+			StepName:     stageID,
+			Status:       "error",
+			Timestamp:    event.Timestamp,
+			Error:        errMsg,
+		})
+	}
 }

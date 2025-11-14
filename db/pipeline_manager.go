@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	pipeline "github.com/simon020286/go-pipeline"
+	"github.com/simon020286/go-pipeline/pkg"
 	"gopkg.in/yaml.v3"
 )
 
@@ -382,43 +384,19 @@ func (pm *PipelineManager) UpdatePipelineLastRun(id int, timestamp time.Time) er
 	return nil
 }
 
-// validatePipelineConfig validates that the YAML configuration is valid
+// validatePipelineConfig validates that the YAML configuration is valid using the external library
 func (pm *PipelineManager) validatePipelineConfig(configYAML string) error {
-	var config map[string]interface{}
+	// Parse YAML into the external library's config structure
+	var config pkg.PipelineConfig
 	err := yaml.Unmarshal([]byte(configYAML), &config)
 	if err != nil {
 		return fmt.Errorf("invalid YAML: %w", err)
 	}
 
-	// Basic validation - check for required 'steps' field
-	steps, exists := config["steps"]
-	if !exists {
-		return fmt.Errorf("configuration must contain 'steps' field")
-	}
-
-	stepsSlice, ok := steps.([]interface{})
-	if !ok {
-		return fmt.Errorf("'steps' field must be an array")
-	}
-
-	if len(stepsSlice) == 0 {
-		return fmt.Errorf("pipeline must contain at least one step")
-	}
-
-	// Validate each step has required fields
-	for i, step := range stepsSlice {
-		stepMap, ok := step.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("step %d must be an object", i)
-		}
-
-		if _, exists := stepMap["name"]; !exists {
-			return fmt.Errorf("step %d must have a 'name' field", i)
-		}
-
-		if _, exists := stepMap["type"]; !exists {
-			return fmt.Errorf("step %d must have a 'type' field", i)
-		}
+	// Try to build the pipeline to validate the configuration
+	_, err = pipeline.BuildFromConfig(&config)
+	if err != nil {
+		return fmt.Errorf("invalid pipeline configuration: %w", err)
 	}
 
 	return nil
