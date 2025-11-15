@@ -8,15 +8,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	"go-etl/pipeline"
-	_ "go-etl/steps"
 	"go-etl/web"
 )
 
 func main() {
 	webFlag := flag.Bool("web", false, "Start web server")
 	logFlag := flag.String("log", "warn", "Set log level (debug, info, warn, error)")
-	fileFlag := flag.String("file", "", "Path to pipeline YAML file")
+	fileFlag := flag.String("file", "", "Path to pipeline YAML file (runs once and exits)")
 
 	flag.Parse()
 
@@ -35,31 +33,14 @@ func main() {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevel, // o slog.LevelInfo
+		Level: logLevel,
 	}))
 
 	slog.SetDefault(logger)
 
-	if fileFlag == nil && !*webFlag {
-		logger.Error("No pipeline file specified. Use -file to provide a YAML file or -web to start the web server.")
-		return
-	}
-
-	// defer core.StopWebServer(context.Background())
-
-	if *webFlag {
-		web.StartServer(logger)
-		// return
-	}
-
-	if fileFlag == nil {
-		return
-	}
-
-	pipeline, err := pipeline.LoadPipelineFromFile(*fileFlag)
-	if err != nil {
-		logger.Error("Failed to load pipeline", "error", err)
-		return
+	if !*webFlag && *fileFlag == "" {
+		logger.Error("No mode specified. Use -web to start the web server or -file to run a pipeline")
+		os.Exit(1)
 	}
 
 	// Create context that cancels on SIGINT/SIGTERM
@@ -76,8 +57,20 @@ func main() {
 		cancel()
 	}()
 
-	if err = pipeline.Run(ctx, logger); err != nil {
-		logger.Error("Pipeline run failed", "error", err)
+	if *webFlag {
+		// Start web server mode - this is the main orchestration mode
+		logger.Info("Starting go-etl orchestrator in web mode")
+		web.StartServer(logger)
 		return
+	}
+
+	if *fileFlag != "" {
+		// Direct pipeline execution mode - runs a single pipeline file and exits
+		logger.Info("Running pipeline from file", "file", *fileFlag)
+		if err := web.RunPipelineFile(ctx, *fileFlag, logger); err != nil {
+			logger.Error("Pipeline execution failed", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("Pipeline execution completed successfully")
 	}
 }

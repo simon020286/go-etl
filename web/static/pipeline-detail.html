@@ -741,13 +741,13 @@
             document.getElementById('infoEnabled').textContent = pipelineData.enabled ? 'Yes' : 'No';
             document.getElementById('infoCreated').textContent = new Date(pipelineData.created_at).toLocaleString();
             document.getElementById('infoUpdated').textContent = new Date(pipelineData.updated_at).toLocaleString();
-            document.getElementById('infoSteps').textContent = pipelineConfig.steps ? pipelineConfig.steps.length : 0;
+            document.getElementById('infoSteps').textContent = pipelineConfig.stages ? pipelineConfig.stages.length : 0;
             document.getElementById('infoDescription').textContent = pipelineData.description || 'No description provided';
         }
 
         // Render graph using Cytoscape
         function renderGraph() {
-            if (!pipelineConfig.steps || pipelineConfig.steps.length === 0) {
+            if (!pipelineConfig.stages || pipelineConfig.stages.length === 0) {
                 document.getElementById('cy').innerHTML = '<div class="loading">No steps defined in this pipeline</div>';
                 return;
             }
@@ -757,30 +757,30 @@
             const stepTypes = new Set();
 
             // Add nodes
-            pipelineConfig.steps.forEach(step => {
-                stepTypes.add(step.type);
+            pipelineConfig.stages.forEach(step => {
+                stepTypes.add(step.step_type);
                 elements.push({
                     data: {
-                        id: step.name,
-                        label: step.name,
-                        type: step.type,
-                        config: step.config,
-                        inputs: step.inputs || []
+                        id: step.id,
+                        label: step.id,
+                        type: step.step_type,
+                        config: step.step_config,
+                        inputs: step.dependencies || []
                     }
                 });
             });
 
             // Add edges based on inputs
-            pipelineConfig.steps.forEach(step => {
-                if (step.inputs && Array.isArray(step.inputs)) {
-                    step.inputs.forEach(input => {
+            pipelineConfig.stages.forEach(step => {
+                if (step.dependencies && Array.isArray(step.dependencies)) {
+                    step.dependencies.forEach(input => {
                         // Handle input format like "stepname" or "stepname:output"
                         const sourceStep = input.split(':')[0];
                         elements.push({
                             data: {
-                                id: `${sourceStep}-${step.name}`,
+                                id: `${sourceStep}-${step.id}`,
                                 source: sourceStep,
-                                target: step.name
+                                target: step.id
                             }
                         });
                     });
