@@ -29,7 +29,7 @@ type PipelineStateManager struct {
 // RunningPipeline tracks an active pipeline execution using the external go-pipeline library
 type RunningPipeline struct {
 	ID         int
-	Pipeline   pipeline.IPipeline // Using interface from external library
+	Pipeline   *pipeline.Pipeline // Using interface from external library
 	Execution  *Execution
 	Context    context.Context
 	CancelFunc context.CancelFunc
