@@ -423,6 +423,9 @@
                             <button class="btn" onclick="downloadYAML()">
                                 ⬇️ Download YAML
                             </button>
+                            <button class="btn btn-danger" id="btnDelete" onclick="deletePipeline()" disabled>
+                                🗑️ Delete Pipeline
+                            </button>
                         </div>
                     </div>
 
@@ -937,21 +940,29 @@
             const btnPause = document.getElementById('btnPause');
             const btnResume = document.getElementById('btnResume');
             const btnStop = document.getElementById('btnStop');
+            const btnDelete = document.getElementById('btnDelete');
 
             // Reset all
             btnStart.disabled = true;
             btnPause.disabled = true;
             btnResume.disabled = true;
             btnStop.disabled = true;
+            btnDelete.disabled = true;
 
             if (state === 'RUNNING') {
                 btnPause.disabled = false;
                 btnStop.disabled = false;
+                // Cannot delete while running
             } else if (state === 'PAUSED') {
                 btnResume.disabled = false;
                 btnStop.disabled = false;
+                // Cannot delete while paused
             } else if (enabled && (state === 'CREATED' || state === 'COMPLETED' || state === 'ERROR' || state === 'STOPPED')) {
                 btnStart.disabled = false;
+                btnDelete.disabled = false; // Can delete when not running
+            } else {
+                // Disabled pipelines can still be deleted
+                btnDelete.disabled = false;
             }
         }
 
@@ -1017,6 +1028,30 @@
                 }
             } catch (error) {
                 alert('Error resuming pipeline: ' + error.message);
+            }
+        }
+
+        async function deletePipeline() {
+            if (!pipelineId || !pipelineData) return;
+
+            // Confirm deletion
+            const pipelineName = pipelineData.name || `Pipeline #${pipelineId}`;
+            if (!confirm(`Are you sure you want to delete pipeline "${pipelineName}"?\n\nThis action cannot be undone and will remove:\n- Pipeline configuration\n- All execution history\n- All associated data\n\nType the pipeline name to confirm deletion.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/v1/pipelines/${pipelineId}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    alert(`Pipeline "${pipelineName}" deleted successfully.\n\nRedirecting to dashboard...`);
+                    // Redirect to dashboard after successful deletion
+                    window.location.href = '/';
+                } else {
+                    alert('Failed to delete pipeline: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error deleting pipeline: ' + error.message);
             }
         }
 

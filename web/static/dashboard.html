@@ -404,6 +404,11 @@
             actions.push(`<button class="btn" onclick="viewPipeline(${pipeline.id})">👁️ View</button>`);
             actions.push(`<button class="btn" onclick="downloadPipeline(${pipeline.id}, '${pipeline.name}')">⬇️ Download</button>`);
 
+            // Only allow delete if pipeline is not running
+            if (pipeline.state !== 'RUNNING' && pipeline.state !== 'PAUSED') {
+                actions.push(`<button class="btn btn-danger" onclick="deletePipeline(${pipeline.id}, '${pipeline.name}')">🗑️ Delete</button>`);
+            }
+
             return actions.join('');
         }
 
@@ -546,6 +551,27 @@
                 }
             } catch (error) {
                 showMessage(`Error resuming pipeline: ${error.message}`, 'error');
+            }
+        }
+
+        async function deletePipeline(id, name) {
+            // Confirm deletion
+            if (!confirm(`Are you sure you want to delete pipeline "${name}"?\n\nThis action cannot be undone and will remove:\n- Pipeline configuration\n- All execution history\n- All associated data`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/v1/pipelines/${id}`, { method: 'DELETE' });
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage(`Pipeline "${name}" deleted successfully`, 'success');
+                    setTimeout(refreshDashboard, 1000);
+                } else {
+                    showMessage(`Failed to delete pipeline: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`Error deleting pipeline: ${error.message}`, 'error');
             }
         }
 
